@@ -2,7 +2,8 @@ package utils
 
 // Config struct for config.yml
 type Config struct {
-	Client Client
+	ChainID string `yaml:"chainID"`
+	Client  Client
 }
 
 // Client config struct

@@ -1,3 +1,4 @@
+chainID: "Polkadot"
 client:
   grcp:
     maxMsgSize: 419430400 # deafult max message size is 1024 * 1024 * 400 = 4194304

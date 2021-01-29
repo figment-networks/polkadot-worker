@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/figment-networks/polkadot-worker/client"
 	"github.com/figment-networks/polkadot-worker/utils"
+	"github.com/figment-networks/polkadot-worker/worker"
+	"github.com/figment-networks/polkadot-worker/worker/mapper"
+
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
 	"go.uber.org/zap"
@@ -39,27 +42,39 @@ func main() {
 		log.Fatalf("Error while creating connection with polkadot-proxy: %s", err.Error())
 	}
 
-	client := client.Client{
+	client := worker.Client{
 		Log:     log,
 		GrcpCli: conn,
 
 		BlockClient:       blockpb.NewBlockServiceClient(conn),
+		EventClient:       eventpb.NewEventServiceClient(conn),
 		TransactionClient: transactionpb.NewTransactionServiceClient(conn),
 	}
 
-	block, err := client.GetBlockByHeight(3537654)
+	blockRes, err := client.GetBlockByHeight(3537654)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	fmt.Println(block)
+	fmt.Println(blockRes)
 
-	transaction, err := client.GetTransactionByHeight(3537654)
+	transactionRes, err := client.GetTransactionByHeight(3537654)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	fmt.Println(transaction)
+	fmt.Println(transactionRes)
+
+	eventRes, err := client.GetEventByHeight(3537654)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	fmt.Println(eventRes)
+
+	if _, err = mapper.TransactionMapper(config.ChainID, blockRes, eventRes, transactionRes); err != nil {
+		log.Fatal(err.Error())
+	}
 
 }
 
