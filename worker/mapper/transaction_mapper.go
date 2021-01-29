@@ -13,12 +13,11 @@ import (
 )
 
 const (
-	CHAIN_ID = "Polkadot"
-	V_1      = "0.0.1"
+	V_1 = "0.0.1"
 )
 
 // TransactionMapper maps Block and Transaction response into database Transcation struct
-func TransactionMapper(blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
+func TransactionMapper(chainID string, blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
 	blockHash := blockRes.Block.BlockHash
 	height := blockRes.Block.Header.Height
 
@@ -47,7 +46,7 @@ func TransactionMapper(blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.
 			BlockHash: blockHash,
 			Height:    uint64(height),
 			Epoch:     t.Time,
-			ChainID:   CHAIN_ID,
+			ChainID:   chainID,
 			Time:      time.Unix(int64(timeInt), 0),
 			Fee:       []structs.TransactionAmount{{Text: t.PartialFee}},
 			GasWanted: 0,

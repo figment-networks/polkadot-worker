@@ -72,7 +72,7 @@ func main() {
 
 	fmt.Println(eventRes)
 
-	if _, err = mapper.TransactionMapper(blockRes, eventRes, transactionRes); err != nil {
+	if _, err = mapper.TransactionMapper(config.ChainID, blockRes, eventRes, transactionRes); err != nil {
 		log.Fatal(err.Error())
 	}
 
