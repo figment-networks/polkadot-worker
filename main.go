@@ -8,6 +8,7 @@ import (
 	"github.com/figment-networks/polkadot-worker/client"
 	"github.com/figment-networks/polkadot-worker/utils"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -39,17 +40,26 @@ func main() {
 	}
 
 	client := client.Client{
-		Log:         log,
-		GrcpCli:     conn,
-		BlockClient: blockpb.NewBlockServiceClient(conn),
+		Log:     log,
+		GrcpCli: conn,
+
+		BlockClient:       blockpb.NewBlockServiceClient(conn),
+		TransactionClient: transactionpb.NewTransactionServiceClient(conn),
 	}
 
-	res, err := client.GetBlockByHeight(590)
+	block, err := client.GetBlockByHeight(3537654)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	fmt.Println(res)
+	fmt.Println(block)
+
+	transaction, err := client.GetTransactionByHeight(3537654)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	fmt.Println(transaction)
 
 }
 
