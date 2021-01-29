@@ -2,17 +2,17 @@ package client
 
 import (
 	"context"
-	"log"
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
 // Client connecting to polkadot-proxy
 type Client struct {
-	Log     *log.Logger
+	Log     *zap.SugaredLogger
 	GrcpCli *grpc.ClientConn
 
 	BlockClient blockpb.BlockServiceClient

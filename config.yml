@@ -1,4 +1,4 @@
 client:
   grcp:
-    maxMsgSize: 419430400 # deafult max message size is 4194304
+    maxMsgSize: 419430400 # deafult max message size is 1024 * 1024 * 400 = 4194304
     url: "localhost:50051" # polkadot-proxy url

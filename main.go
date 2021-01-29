@@ -2,14 +2,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
-	"log"
-	"os"
 
 	"github.com/figment-networks/polkadot-worker/client"
 	"github.com/figment-networks/polkadot-worker/utils"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v3"
 )
@@ -17,8 +17,12 @@ import (
 func main() {
 	mainCtx := context.Background()
 
-	log := log.New(nil, "[polkadot-worker]", log.Ldate|log.Ltime|log.Lshortfile)
-	log.SetOutput(os.Stdout)
+	logger, err := zap.NewProduction()
+	if err != nil {
+		panic(fmt.Sprintf("Could not create a new logger: %s", err.Error()))
+	}
+	defer logger.Sync()
+	log := logger.Sugar()
 
 	config := getConfig(log)
 
@@ -45,11 +49,11 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	log.Println(res)
+	fmt.Println(res)
 
 }
 
-func getConfig(log *log.Logger) (cfg utils.Config) {
+func getConfig(log *zap.SugaredLogger) (cfg utils.Config) {
 	file, err := ioutil.ReadFile("config.yml")
 	if err != nil {
 		log.Fatalf("Error while getting config file: %s", err.Error())
