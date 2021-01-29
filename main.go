@@ -10,6 +10,7 @@ import (
 	"github.com/figment-networks/polkadot-worker/worker/mapper"
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
 	"go.uber.org/zap"
@@ -46,24 +47,32 @@ func main() {
 		GrcpCli: conn,
 
 		BlockClient:       blockpb.NewBlockServiceClient(conn),
+		EventClient:       eventpb.NewEventServiceClient(conn),
 		TransactionClient: transactionpb.NewTransactionServiceClient(conn),
 	}
 
-	block, err := client.GetBlockByHeight(3537654)
+	blockRes, err := client.GetBlockByHeight(3537654)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	fmt.Println(block)
+	fmt.Println(blockRes)
 
-	transaction, err := client.GetTransactionByHeight(3537654)
+	transactionRes, err := client.GetTransactionByHeight(3537654)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	fmt.Println(transaction)
+	fmt.Println(transactionRes)
 
-	if _, err = mapper.TransactionMap(block, transaction); err != nil {
+	eventRes, err := client.GetEventByHeight(3537654)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	fmt.Println(eventRes)
+
+	if _, err = mapper.TransactionMapper(blockRes, eventRes, transactionRes); err != nil {
 		log.Fatal(err.Error())
 	}
 

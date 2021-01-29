@@ -6,6 +6,7 @@ import (
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
 	"github.com/pkg/errors"
@@ -16,8 +17,12 @@ const (
 	V_1      = "0.0.1"
 )
 
-// TransactionMap maps Block and Transaction response into database Transcation struct
-func TransactionMap(blockRes *blockpb.GetByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
+// TransactionMapper maps Block and Transaction response into database Transcation struct
+func TransactionMapper(blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
+	if err := validateRequestsFields(blockRes, transactionRes); err != nil {
+		return nil, errors.Wrapf(err, "Could not map transaction")
+	}
+
 	blockHash := blockRes.Block.BlockHash
 	height := blockRes.Block.Header.Height
 
@@ -30,6 +35,15 @@ func TransactionMap(blockRes *blockpb.GetByHeightResponse, transactionRes *trans
 			return nil, errors.Wrap(err, "Could not parse transaction time")
 		}
 
+		events := []structs.TransactionEvent{}
+		for _, e := range eventRes.Events {
+			if e.ExtrinsicIndex == t.ExtrinsicIndex {
+				events = append(events, structs.TransactionEvent{
+					ID: strconv.Itoa(int(e.Index)),
+				})
+			}
+		}
+
 		transactions = append(transactions, &structs.Transaction{
 			CreatedAt: &now,
 			UpdatedAt: &now,
@@ -39,12 +53,12 @@ func TransactionMap(blockRes *blockpb.GetByHeightResponse, transactionRes *trans
 			Epoch:     t.Time,
 			ChainID:   CHAIN_ID,
 			Time:      time.Unix(int64(timeInt), 0),
-			Fee:       []structs.TransactionAmount{},
+			Fee:       []structs.TransactionAmount{{Text: t.PartialFee}},
 			GasWanted: 0,
 			GasUsed:   0,
 			Memo:      "",
 			Version:   V_1,
-			Events:    []structs.TransactionEvent{},
+			Events:    events,
 			Raw:       []byte{},
 			RawLog:    []byte{},
 			HasErrors: !t.IsSuccess,
@@ -52,4 +66,20 @@ func TransactionMap(blockRes *blockpb.GetByHeightResponse, transactionRes *trans
 	}
 
 	return transactions, nil
+}
+
+func validateRequestsFields(blockRes *blockpb.GetByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) error {
+	if blockRes == nil || blockRes.Block == nil {
+		return errors.New("Block response is empty")
+	}
+
+	if transactionRes == nil || transactionRes.Transactions == nil {
+		return errors.New("Transaction response is empty")
+	}
+
+	if blockRes.Block.Header == nil {
+		return errors.New("Header in Block response is empty")
+	}
+
+	return nil
 }
