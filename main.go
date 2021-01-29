@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/figment-networks/polkadot-worker/client"
 	"github.com/figment-networks/polkadot-worker/utils"
+	"github.com/figment-networks/polkadot-worker/worker"
+	"github.com/figment-networks/polkadot-worker/worker/mapper"
+
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
@@ -39,7 +41,7 @@ func main() {
 		log.Fatalf("Error while creating connection with polkadot-proxy: %s", err.Error())
 	}
 
-	client := client.Client{
+	client := worker.Client{
 		Log:     log,
 		GrcpCli: conn,
 
@@ -60,6 +62,10 @@ func main() {
 	}
 
 	fmt.Println(transaction)
+
+	if _, err = mapper.TransactionMap(block, transaction); err != nil {
+		log.Fatal(err.Error())
+	}
 
 }
 
