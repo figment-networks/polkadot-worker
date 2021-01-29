@@ -19,10 +19,6 @@ const (
 
 // TransactionMapper maps Block and Transaction response into database Transcation struct
 func TransactionMapper(blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
-	if err := validateRequestsFields(blockRes, transactionRes); err != nil {
-		return nil, errors.Wrapf(err, "Could not map transaction")
-	}
-
 	blockHash := blockRes.Block.BlockHash
 	height := blockRes.Block.Header.Height
 
@@ -66,20 +62,4 @@ func TransactionMapper(blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.
 	}
 
 	return transactions, nil
-}
-
-func validateRequestsFields(blockRes *blockpb.GetByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) error {
-	if blockRes == nil || blockRes.Block == nil {
-		return errors.New("Block response is empty")
-	}
-
-	if transactionRes == nil || transactionRes.Transactions == nil {
-		return errors.New("Transaction response is empty")
-	}
-
-	if blockRes.Block.Header == nil {
-		return errors.New("Header in Block response is empty")
-	}
-
-	return nil
 }
