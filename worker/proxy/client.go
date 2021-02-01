@@ -2,7 +2,10 @@ package proxy
 
 import (
 	"context"
+<<<<<<< HEAD
 	"time"
+=======
+>>>>>>> Indexer-manager connection
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
@@ -14,9 +17,15 @@ import (
 
 // ClientIface interface
 type ClientIface interface {
+<<<<<<< HEAD
 	GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error)
 	GetEventByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error)
 	GetTransactionByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error)
+=======
+	GetBlockByHeight(height uint64) (*blockpb.GetByHeightResponse, error)
+	GetEventByHeight(height uint64) (*eventpb.GetByHeightResponse, error)
+	GetTransactionByHeight(height uint64) (*transactionpb.GetByHeightResponse, error)
+>>>>>>> Indexer-manager connection
 }
 
 // Client connecting to polkadot-proxy

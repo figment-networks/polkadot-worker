@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+<<<<<<< HEAD
 	"net/http"
+=======
+>>>>>>> Indexer-manager connection
 	"os"
 	"time"
 
@@ -134,7 +137,7 @@ func registerWorker(ctx context.Context, log *zap.SugaredLogger, cfg *Config) {
 		log.Errorf("Error while creating new random id for polkadot-worker: %s", err.Error())
 	}
 
-	workerAddress := cfg.Host + cfg.ProxyPort
+	workerAddress := cfg.Host + cfg.Port
 
 	c := connectivity.NewWorkerConnections(workerRunID.String(), workerAddress, cfg.Network, cfg.ChainID, "0.0.1")
 
