@@ -2,14 +2,11 @@ package mapper
 
 import (
 	"strconv"
-	"time"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
-
-	"github.com/pkg/errors"
 )
 
 const (
@@ -17,18 +14,27 @@ const (
 )
 
 // TransactionMapper maps Block and Transaction response into database Transcation struct
-func TransactionMapper(chainID string, blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
+func TransactionMapper(blockRes *blockpb.GetByHeightResponse, chainID string, eventRes *eventpb.GetByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
+	if blockRes == nil || eventRes == nil || transactionRes == nil {
+		return nil, nil
+	}
+
 	blockHash := blockRes.Block.BlockHash
 	height := blockRes.Block.Header.Height
+	transactionMap := make(map[string]struct{})
 
 	var transactions []*structs.Transaction
 	for _, t := range transactionRes.Transactions {
-		now := time.Now()
-
-		timeInt, err := strconv.Atoi(t.Time)
-		if err != nil {
-			return nil, errors.Wrap(err, "Could not parse transaction time")
+		if _, ok := transactionMap[t.Hash]; ok {
+			continue
 		}
+
+		transactionMap[t.Hash] = struct{}{}
+
+		// timeInt, err := strconv.Atoi(t.Time)
+		// if err != nil {
+		// 	return nil, errors.Wrap(err, "Could not parse transaction time")
+		// }
 
 		events := []structs.TransactionEvent{}
 		for _, e := range eventRes.Events {
@@ -40,14 +46,12 @@ func TransactionMapper(chainID string, blockRes *blockpb.GetByHeightResponse, ev
 		}
 
 		transactions = append(transactions, &structs.Transaction{
-			CreatedAt: &now,
-			UpdatedAt: &now,
 			Hash:      t.Hash,
 			BlockHash: blockHash,
 			Height:    uint64(height),
 			Epoch:     t.Time,
 			ChainID:   chainID,
-			Time:      time.Unix(int64(timeInt), 0),
+			// Time:      time.Unix(int64(timeInt), 0),
 			Fee:       []structs.TransactionAmount{{Text: t.PartialFee}},
 			GasWanted: 0,
 			GasUsed:   0,
