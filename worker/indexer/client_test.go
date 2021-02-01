@@ -744,17 +744,17 @@ type proxyClientMock struct {
 	mock.Mock
 }
 
-func (m proxyClientMock) GetBlockByHeight(height uint64) (*blockpb.GetByHeightResponse, error) {
-	args := m.Called(height)
+func (m proxyClientMock) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error) {
+	args := m.Called(ctx, height)
 	return args.Get(0).(*blockpb.GetByHeightResponse), args.Error(1)
 }
 
-func (m proxyClientMock) GetEventByHeight(height uint64) (*eventpb.GetByHeightResponse, error) {
-	args := m.Called(height)
+func (m proxyClientMock) GetEventByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error) {
+	args := m.Called(ctx, height)
 	return args.Get(0).(*eventpb.GetByHeightResponse), args.Error(1)
 }
 
-func (m proxyClientMock) GetTransactionByHeight(height uint64) (*transactionpb.GetByHeightResponse, error) {
-	args := m.Called(height)
+func (m proxyClientMock) GetTransactionByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error) {
+	args := m.Called(ctx, height)
 	return args.Get(0).(*transactionpb.GetByHeightResponse), args.Error(1)
 }
