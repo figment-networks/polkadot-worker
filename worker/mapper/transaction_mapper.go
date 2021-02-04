@@ -5,6 +5,8 @@ import (
 
 	"github.com/figment-networks/polkadot-worker/worker/proxy"
 
+	"github.com/figment-networks/polkadot-worker/worker/proxy"
+
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
