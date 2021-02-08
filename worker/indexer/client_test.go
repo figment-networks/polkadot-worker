@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadot-worker/worker/indexer"
+	"github.com/figment-networks/polkadot-worker/worker/proxy"
 	"github.com/figment-networks/polkadot-worker/worker/utils"
 
 	"github.com/figment-networks/indexer-manager/structs"
@@ -41,6 +43,10 @@ func (ic *IndexerClientTest) SetupTest() {
 
 	log, err := zap.NewDevelopment()
 	ic.Require().Nil(err)
+
+	conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
+	proxy.BlockConversionDuration = conversionDuration.WithLabels("block")
+	proxy.TransactionConversionDuration = conversionDuration.WithLabels("transaction")
 
 	proxyClientMock := proxyClientMock{}
 
