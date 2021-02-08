@@ -21,8 +21,9 @@ import (
 	"go.uber.org/zap"
 )
 
-var errBadRequest = errors.New("bad request")
 var (
+	errBadRequest = errors.New("bad request")
+
 	getTransactionDuration *metrics.GroupObserver
 	getLatestDuration      *metrics.GroupObserver
 )
