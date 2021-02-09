@@ -12,8 +12,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/figment-networks/polkadot-worker/worker/indexer"
-	"github.com/figment-networks/polkadot-worker/worker/proxy"
+	"github.com/figment-networks/polkadot-worker/config"
+	"github.com/figment-networks/polkadot-worker/indexer"
+	"github.com/figment-networks/polkadot-worker/proxy"
 
 	"github.com/figment-networks/indexer-manager/worker/connectivity"
 	grpcIndexer "github.com/figment-networks/indexer-manager/worker/transport/grpc"
@@ -61,7 +62,7 @@ func Start() {
 	grpcServer.Serve(lis)
 }
 
-func getConfig() (cfg Config) {
+func getConfig() (cfg config.Config) {
 	file, err := ioutil.ReadFile("config.yml")
 	if err != nil {
 		fmt.Printf("Error while getting config file: %s\n", err.Error())
@@ -105,7 +106,7 @@ func getLogger(logLevel string) (*zap.SugaredLogger, func() error) {
 	return logger.Sugar(), logger.Sync
 }
 
-func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *Config) (*indexer.Client, func() error) {
+func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *config.Config) (*indexer.Client, func() error) {
 	conn, err := grpc.DialContext(
 		ctx,
 		cfg.Proxy.Client.URL,
@@ -131,7 +132,7 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *Confi
 	), conn.Close
 }
 
-func registerWorker(ctx context.Context, log *zap.SugaredLogger, cfg *Config) {
+func registerWorker(ctx context.Context, log *zap.SugaredLogger, cfg *config.Config) {
 	workerRunID, err := uuid.NewRandom()
 	if err != nil {
 		log.Errorf("Error while creating new random id for polkadot-worker: %s", err.Error())

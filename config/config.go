@@ -1,4 +1,4 @@
-package worker
+package config
 
 // Config struct for config.yml
 type Config struct {

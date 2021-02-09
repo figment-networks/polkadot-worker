@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/figment-networks/indexing-engine/metrics"
-	"github.com/figment-networks/polkadot-worker/worker/mapper"
-	"github.com/figment-networks/polkadot-worker/worker/proxy"
+	"github.com/figment-networks/polkadot-worker/mapper"
+	"github.com/figment-networks/polkadot-worker/proxy"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
