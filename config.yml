@@ -1,5 +1,13 @@
 chainID: "Polkadot"
-client:
-  grcp:
-    maxMsgSize: 419430400 # deafult max message size is 1024 * 1024 * 400 = 4194304
+host: "0.0.0.0"
+logLevel: "info"
+network: "Polkadot"
+port: ":3000"
+proxy:
+  client:
     url: "localhost:50051" # polkadot-proxy url
+indexer:
+  client:
+    page: 100
+  manager:
+    address: "127.0.0.1:8085"
