@@ -49,7 +49,7 @@ func (c *Client) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.
 
 	now := time.Now()
 
-	res, err := c.blockClient.GetByHeight(context.Background(), req)
+	res, err := c.blockClient.GetByHeight(ctx, req)
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting block by height: %d", height)
 		requestDuration.WithLabels("GetBlockByHeight", err.Error()).Observe(time.Since(now).Seconds())
@@ -71,7 +71,7 @@ func (c *Client) GetEventByHeight(ctx context.Context, height uint64) (*eventpb.
 
 	now := time.Now()
 
-	res, err := c.eventClient.GetByHeight(context.Background(), req)
+	res, err := c.eventClient.GetByHeight(ctx, req)
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting event by height: %d", height)
 		requestDuration.WithLabels("GetEventByHeight", err.Error()).Observe(time.Since(now).Seconds())
@@ -93,7 +93,7 @@ func (c *Client) GetTransactionByHeight(ctx context.Context, height uint64) (*tr
 
 	now := time.Now()
 
-	res, err := c.transactionClient.GetByHeight(context.Background(), req)
+	res, err := c.transactionClient.GetByHeight(ctx, req)
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting transaction by height: %d", height)
 		requestDuration.WithLabels("GetTransactionByHeight", err.Error()).Observe(time.Since(now).Seconds())

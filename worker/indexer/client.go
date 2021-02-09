@@ -39,7 +39,7 @@ type Client struct {
 }
 
 // NewClient is a indexer-manager Client constructor
-func NewClient(bigPage uint64, chainID string, log *zap.SugaredLogger, page uint64, proxy proxy.ClientIface) *Client {
+func NewClient(chainID string, log *zap.SugaredLogger, page uint64, proxy proxy.ClientIface) *Client {
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
 
