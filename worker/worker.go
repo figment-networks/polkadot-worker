@@ -2,13 +2,11 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
-<<<<<<< HEAD
 	"net/http"
-=======
->>>>>>> Indexer-manager connection
 	"os"
 	"time"
 
@@ -29,14 +27,13 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
-	"gopkg.in/yaml.v2"
 )
 
 // Start runs polkadot-worker
 func Start() {
 	cfg := getConfig()
 	mainCtx := context.Background()
-	log, logSync := getLogger(cfg.LogLevel)
+	log, logSync := getLogger(cfg.Worker.LogLevel)
 	defer logSync()
 
 	indexerClient, closeProxyConnection := createIndexerClient(mainCtx, log, &cfg)
@@ -63,13 +60,13 @@ func Start() {
 }
 
 func getConfig() (cfg config.Config) {
-	file, err := ioutil.ReadFile("config.yml")
+	file, err := ioutil.ReadFile("./../../config.json")
 	if err != nil {
 		fmt.Printf("Error while getting config file: %s\n", err.Error())
 		os.Exit(1)
 	}
 
-	if err := yaml.Unmarshal(file, &cfg); err != nil {
+	if err := json.Unmarshal(file, &cfg); err != nil {
 		fmt.Printf("Error while unmarshalling config file to struct: %s", err.Error())
 		os.Exit(1)
 	}
@@ -109,7 +106,7 @@ func getLogger(logLevel string) (*zap.SugaredLogger, func() error) {
 func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *config.Config) (*indexer.Client, func() error) {
 	conn, err := grpc.DialContext(
 		ctx,
-		cfg.Proxy.Client.URL,
+		cfg.PolkadotClientBaseURL,
 		grpc.WithInsecure(),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 	)
@@ -125,9 +122,9 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 	)
 
 	return indexer.NewClient(
-		cfg.ChainID,
+		cfg.Worker.ChainID,
 		log,
-		cfg.Indexer.Client.Page,
+		cfg.IndexerManager.Page,
 		proxyClient,
 	), conn.Close
 }
@@ -138,11 +135,11 @@ func registerWorker(ctx context.Context, log *zap.SugaredLogger, cfg *config.Con
 		log.Errorf("Error while creating new random id for polkadot-worker: %s", err.Error())
 	}
 
-	workerAddress := cfg.Host + cfg.Port
+	workerAddress := cfg.Worker.Address.Host + cfg.Worker.Address.Port
 
-	c := connectivity.NewWorkerConnections(workerRunID.String(), workerAddress, cfg.Network, cfg.ChainID, "0.0.1")
+	c := connectivity.NewWorkerConnections(workerRunID.String(), workerAddress, cfg.Worker.Network, cfg.Worker.ChainID, "0.0.1")
 
-	c.AddManager(cfg.Indexer.Manager.Address + "/client_ping")
+	c.AddManager(cfg.IndexerManager.BaseURL + "/client_ping")
 
 	go c.Run(ctx, log.Desugar(), 10*time.Second)
 }

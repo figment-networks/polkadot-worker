@@ -2,38 +2,28 @@ package config
 
 // Config struct for config.yml
 type Config struct {
-	ChainID    string `yaml:"chainID"`
-	Host       string `yaml:"host"`
-	LogLevel   string `yaml:"logLevel"`
-	Network    string `yaml:"network"`
-	ProxyPort  string `yaml:"proxy_port"`
-	WorkerPort string `yaml:"worker_port"`
-	Proxy      Proxy
-	Indexer    Indexer
+	Worker                WorkerConfig
+	PolkadotClientBaseURL string
+	IndexerManager        IndexerManagerConfig `json:"indexer_manager"`
 }
 
-// Proxy config
-type Proxy struct {
-	Client ProxyClient
+// WorkerConfig config
+type WorkerConfig struct {
+	ChainID  string
+	LogLevel string
+	Network  string
+	Version  string
+	Address  WorkerAddress
 }
 
-// ProxyClient config
-type ProxyClient struct {
-	URL string `yaml:"url"`
+// WorkerAddress host and port
+type WorkerAddress struct {
+	Host string
+	Port string
 }
 
-// Indexer config
-type Indexer struct {
-	Client  IndexerClient
-	Manager IndexerManager
-}
-
-// IndexerClient config
-type IndexerClient struct {
-	Page uint64 `yaml:"page"`
-}
-
-// IndexerManager config
-type IndexerManager struct {
-	Address string `yaml:"address"`
+// IndexerManagerConfig url and page size
+type IndexerManagerConfig struct {
+	BaseURL string `json:"base_url"`
+	Page    uint64
 }
