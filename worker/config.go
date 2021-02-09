@@ -2,13 +2,14 @@ package worker
 
 // Config struct for config.yml
 type Config struct {
-	ChainID  string `yaml:"chainID"`
-	Host     string `yaml:"host"`
-	LogLevel string `yaml:"logLevel"`
-	Network  string `yaml:"network"`
-	Port     string `yaml:"port"`
-	Proxy    Proxy
-	Indexer  Indexer
+	ChainID    string `yaml:"chainID"`
+	Host       string `yaml:"host"`
+	LogLevel   string `yaml:"logLevel"`
+	Network    string `yaml:"network"`
+	ProxyPort  string `yaml:"proxy_port"`
+	WorkerPort string `yaml:"worker_port"`
+	Proxy      Proxy
+	Indexer    Indexer
 }
 
 // Proxy config

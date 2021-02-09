@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"net/http"
 	"os"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/figment-networks/indexer-manager/worker/connectivity"
 	grpcIndexer "github.com/figment-networks/indexer-manager/worker/transport/grpc"
 	grpcProtoIndexer "github.com/figment-networks/indexer-manager/worker/transport/grpc/indexer"
+	"github.com/figment-networks/indexing-engine/metrics"
+	"github.com/figment-networks/indexing-engine/metrics/prometheusmetrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
@@ -42,13 +45,15 @@ func Start() {
 
 	grpcProtoIndexer.RegisterIndexerServiceServer(grpcServer, indexer)
 
-	lis, err := net.Listen("tcp", "0.0.0.0"+cfg.Port)
+	lis, err := net.Listen("tcp", "0.0.0.0"+cfg.ProxyPort)
 	if err != nil {
-		log.Errorf("Error while listening on %s port", cfg.Port, zap.Error(err))
+		log.Errorf("Error while listening on %s port", cfg.ProxyPort, zap.Error(err))
 		return
 	}
 
-	log.Infof("Polkadot-worker listetning on port %s", cfg.Port)
+	go createMetricsHandler(&cfg, log)
+
+	log.Infof("Polkadot-worker listetning on port %s", cfg.ProxyPort)
 
 	grpcServer.Serve(lis)
 }
@@ -102,6 +107,7 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *Confi
 		ctx,
 		cfg.Proxy.Client.URL,
 		grpc.WithInsecure(),
+		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 	)
 	if err != nil {
 		log.Fatalf("Error while creating connection with polkadot-proxy: %s", err.Error())
@@ -128,11 +134,37 @@ func registerWorker(ctx context.Context, log *zap.SugaredLogger, cfg *Config) {
 		log.Errorf("Error while creating new random id for polkadot-worker: %s", err.Error())
 	}
 
-	workerAddress := cfg.Host + cfg.Port
+	workerAddress := cfg.Host + cfg.ProxyPort
 
 	c := connectivity.NewWorkerConnections(workerRunID.String(), workerAddress, cfg.Network, cfg.ChainID, "0.0.1")
 
 	c.AddManager(cfg.Indexer.Manager.Address + "/client_ping")
 
 	go c.Run(ctx, log.Desugar(), 10*time.Second)
+}
+
+func createMetricsHandler(cfg *Config, log *zap.SugaredLogger) {
+	prom := prometheusmetrics.New()
+	if err := metrics.AddEngine(prom); err != nil {
+		log.Errorf("Error wile adding prometheus metrics engine", zap.Error(err))
+	}
+	if err := metrics.Hotload(prom.Name()); err != nil {
+		log.Errorf("Error wile loading prometheus metrics engine", zap.Error(err))
+	}
+
+	mux := http.NewServeMux()
+
+	mux.Handle("/metrics", metrics.Handler())
+
+	s := &http.Server{
+		Addr:         cfg.Host + cfg.WorkerPort,
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	log.Infof("Handling metrics on port %s", cfg.WorkerPort)
+	if err := s.ListenAndServe(); err != nil {
+		log.Error("Error while listening on %s port", cfg.WorkerPort, zap.Error(err))
+	}
 }

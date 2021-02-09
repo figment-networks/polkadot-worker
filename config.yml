@@ -2,7 +2,8 @@ chainID: "Polkadot"
 host: "0.0.0.0"
 logLevel: "info"
 network: "Polkadot"
-port: ":3000"
+proxy_port: ":3000"
+worker_port: ":8087"
 proxy:
   client:
     url: "localhost:50051" # polkadot-proxy url
