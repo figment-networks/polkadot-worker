@@ -1,4 +1,4 @@
-package worker
+package main
 
 import (
 	"context"
@@ -30,7 +30,7 @@ import (
 )
 
 // Start runs polkadot-worker
-func Start() {
+func main() {
 	cfg := getConfig()
 	mainCtx := context.Background()
 	log, logSync := getLogger(cfg.Worker.LogLevel)
@@ -46,17 +46,15 @@ func Start() {
 
 	grpcProtoIndexer.RegisterIndexerServiceServer(grpcServer, indexer)
 
-	lis, err := net.Listen("tcp", "0.0.0.0"+cfg.ProxyPort)
+	lis, err := net.Listen("tcp", cfg.Worker.Address.Host+cfg.Worker.Address.Port)
 	if err != nil {
-		log.Errorf("Error while listening on %s port", cfg.ProxyPort, zap.Error(err))
+		log.Errorf("Error while listening on %s port", cfg.PolkadotClientBaseURL, zap.Error(err))
 		return
 	}
 
-	go createMetricsHandler(&cfg, log)
+	go handleHTTP(log, &cfg)
 
-	log.Infof("Polkadot-worker listetning on port %s", cfg.ProxyPort)
-
-	grpcServer.Serve(lis)
+	serveGRPC(log, grpcServer, lis, cfg.PolkadotClientBaseURL)
 }
 
 func getConfig() (cfg config.Config) {
@@ -144,7 +142,7 @@ func registerWorker(ctx context.Context, log *zap.SugaredLogger, cfg *config.Con
 	go c.Run(ctx, log.Desugar(), 10*time.Second)
 }
 
-func createMetricsHandler(cfg *Config, log *zap.SugaredLogger) {
+func handleHTTP(log *zap.SugaredLogger, cfg *config.Config) {
 	prom := prometheusmetrics.New()
 	if err := metrics.AddEngine(prom); err != nil {
 		log.Errorf("Error wile adding prometheus metrics engine", zap.Error(err))
@@ -158,14 +156,21 @@ func createMetricsHandler(cfg *Config, log *zap.SugaredLogger) {
 	mux.Handle("/metrics", metrics.Handler())
 
 	s := &http.Server{
-		Addr:         cfg.Host + cfg.WorkerPort,
+		Addr:         cfg.Worker.Address.Host + cfg.Worker.Address.Port,
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
 
-	log.Infof("Handling metrics on port %s", cfg.WorkerPort)
+	log.Infof("HTTP handler listening on port %s", cfg.Worker.Address.Port)
+
 	if err := s.ListenAndServe(); err != nil {
-		log.Error("Error while listening on %s port", cfg.WorkerPort, zap.Error(err))
+		log.Error("Error while listening on %s port", cfg.Worker.Address.Port, zap.Error(err))
 	}
+}
+
+func serveGRPC(log *zap.SugaredLogger, grpcServer *grpc.Server, lis net.Listener, port string) {
+	log.Infof("gRPC server listening on port %s", port)
+
+	grpcServer.Serve(lis)
 }
