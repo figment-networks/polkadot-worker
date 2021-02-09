@@ -59,7 +59,7 @@ func (bc *BlockClientTest) TestGetBlockByHeight_OK() {
 
 	bc.BlockClientMock.On("GetByHeight", mock.AnythingOfType("*context.emptyCtx"), req, mock.AnythingOfType("[]grpc.CallOption")).Return(res, nil)
 
-	response, err := bc.GetBlockByHeight(uint64(height))
+	response, err := bc.GetBlockByHeight(context.Background(), uint64(height))
 
 	bc.Require().Nil(err)
 
@@ -80,7 +80,7 @@ func (bc *BlockClientTest) TestGetBlockByHeight_Error() {
 
 	bc.BlockClientMock.On("GetByHeight", mock.AnythingOfType("*context.emptyCtx"), req, mock.AnythingOfType("[]grpc.CallOption")).Return(res, e)
 
-	response, err := bc.GetBlockByHeight(uint64(height))
+	response, err := bc.GetBlockByHeight(context.Background(), uint64(height))
 
 	bc.Require().Nil(response)
 
@@ -105,7 +105,7 @@ func (bc *BlockClientTest) TestGetEventByHeight_OK() {
 
 	bc.EventClientMock.On("GetByHeight", mock.AnythingOfType("*context.emptyCtx"), req, mock.AnythingOfType("[]grpc.CallOption")).Return(res, nil)
 
-	response, err := bc.GetEventByHeight(uint64(height))
+	response, err := bc.GetEventByHeight(context.Background(), uint64(height))
 
 	bc.Require().Nil(err)
 
@@ -126,7 +126,7 @@ func (bc *BlockClientTest) TestGetEventByHeight_Error() {
 
 	bc.EventClientMock.On("GetByHeight", mock.AnythingOfType("*context.emptyCtx"), req, mock.AnythingOfType("[]grpc.CallOption")).Return(res, e)
 
-	response, err := bc.GetEventByHeight(uint64(height))
+	response, err := bc.GetEventByHeight(context.Background(), uint64(height))
 
 	bc.Require().Nil(response)
 
@@ -151,7 +151,7 @@ func (bc *BlockClientTest) TestGetTransactionByHeight_OK() {
 
 	bc.TransactionClientMock.On("GetByHeight", mock.AnythingOfType("*context.emptyCtx"), req, mock.AnythingOfType("[]grpc.CallOption")).Return(res, nil)
 
-	response, err := bc.GetTransactionByHeight(uint64(height))
+	response, err := bc.GetTransactionByHeight(context.Background(), uint64(height))
 
 	bc.Require().Nil(err)
 
@@ -172,7 +172,7 @@ func (bc *BlockClientTest) TestGetTransactionByHeight_Error() {
 
 	bc.TransactionClientMock.On("GetByHeight", mock.AnythingOfType("*context.emptyCtx"), req, mock.AnythingOfType("[]grpc.CallOption")).Return(res, e)
 
-	response, err := bc.GetTransactionByHeight(uint64(height))
+	response, err := bc.GetTransactionByHeight(context.Background(), uint64(height))
 
 	bc.Require().Nil(response)
 

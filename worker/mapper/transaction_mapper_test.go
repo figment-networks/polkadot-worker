@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadot-worker/worker/mapper"
+	"github.com/figment-networks/polkadot-worker/worker/proxy"
 	"github.com/figment-networks/polkadot-worker/worker/utils"
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
@@ -55,6 +57,9 @@ func (tm *TransactionMapTest) SetupTest() {
 	tm.TransactionRes = &transactionpb.GetByHeightResponse{
 		Transactions: append(append(tr1.Transactions, tr1.Transactions...), tr2.Transactions...),
 	}
+
+	conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
+	proxy.TransactionConversionDuration = conversionDuration.WithLabels("transaction")
 }
 
 func (tm *TransactionMapTest) TestTransactionMap_EmptyResponse() {

@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadot-worker/worker/mapper"
+	"github.com/figment-networks/polkadot-worker/worker/proxy"
 	"github.com/figment-networks/polkadot-worker/worker/utils"
 
 	"github.com/stretchr/testify/require"
@@ -19,6 +21,9 @@ func TestBlockMapper_OK(t *testing.T) {
 	numberOfTransactions := uint64(3)
 	now := time.Now()
 	time := timestamppb.New(now)
+
+	conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
+	proxy.BlockConversionDuration = conversionDuration.WithLabels("block")
 
 	blockRes := utils.BlockResponse(height, hash, time)
 

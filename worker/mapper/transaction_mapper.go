@@ -3,7 +3,10 @@ package mapper
 import (
 	"strconv"
 
+	"github.com/figment-networks/polkadot-worker/worker/proxy"
+
 	"github.com/figment-networks/indexer-manager/structs"
+	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
@@ -15,6 +18,9 @@ const (
 
 // TransactionMapper maps Block and Transaction response into database Transcation struct
 func TransactionMapper(blockRes *blockpb.GetByHeightResponse, chainID string, eventRes *eventpb.GetByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
+	timer := metrics.NewTimer(proxy.TransactionConversionDuration)
+	defer timer.ObserveDuration()
+
 	if blockRes == nil || eventRes == nil || transactionRes == nil {
 		return nil, nil
 	}

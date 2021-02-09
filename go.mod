@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	github.com/figment-networks/indexer-manager v0.0.9
+	github.com/figment-networks/indexing-engine v0.1.14
 	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20201210164304-d5b9edfe1f12
 	github.com/google/uuid v1.1.2
 	github.com/pkg/errors v0.9.1
@@ -16,5 +17,5 @@ require (
 	google.golang.org/grpc v1.35.0
 	google.golang.org/protobuf v1.25.0
 	gopkg.in/yaml.v2 v2.3.0
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
