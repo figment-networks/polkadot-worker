@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/figment-networks/indexing-engine/metrics"
-	"github.com/figment-networks/polkadot-worker/worker/mapper"
-	"github.com/figment-networks/polkadot-worker/worker/proxy"
-	"github.com/figment-networks/polkadot-worker/worker/utils"
+	"github.com/figment-networks/polkadot-worker/mapper"
+	"github.com/figment-networks/polkadot-worker/proxy"
+	"github.com/figment-networks/polkadot-worker/utils"
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"

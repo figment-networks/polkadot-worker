@@ -1,7 +1,8 @@
-package worker
+package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -9,8 +10,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/figment-networks/polkadot-worker/worker/indexer"
-	"github.com/figment-networks/polkadot-worker/worker/proxy"
+	"github.com/figment-networks/polkadot-worker/config"
+	"github.com/figment-networks/polkadot-worker/indexer"
+	"github.com/figment-networks/polkadot-worker/proxy"
 
 	"github.com/figment-networks/indexer-manager/worker/connectivity"
 	grpcIndexer "github.com/figment-networks/indexer-manager/worker/transport/grpc"
@@ -25,14 +27,13 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
-	"gopkg.in/yaml.v2"
 )
 
 // Start runs polkadot-worker
-func Start() {
+func main() {
 	cfg := getConfig()
 	mainCtx := context.Background()
-	log, logSync := getLogger(cfg.LogLevel)
+	log, logSync := getLogger(cfg.Worker.LogLevel)
 	defer logSync()
 
 	indexerClient, closeProxyConnection := createIndexerClient(mainCtx, log, &cfg)
@@ -45,27 +46,25 @@ func Start() {
 
 	grpcProtoIndexer.RegisterIndexerServiceServer(grpcServer, indexer)
 
-	lis, err := net.Listen("tcp", "0.0.0.0"+cfg.ProxyPort)
+	lis, err := net.Listen("tcp", cfg.Worker.Address.Host+cfg.Worker.Address.Port)
 	if err != nil {
-		log.Errorf("Error while listening on %s port", cfg.ProxyPort, zap.Error(err))
+		log.Errorf("Error while listening on %s port", cfg.PolkadotClientBaseURL, zap.Error(err))
 		return
 	}
 
-	go createMetricsHandler(&cfg, log)
+	go handleHTTP(log, &cfg)
 
-	log.Infof("Polkadot-worker listetning on port %s", cfg.ProxyPort)
-
-	grpcServer.Serve(lis)
+	serveGRPC(log, grpcServer, lis, cfg.PolkadotClientBaseURL)
 }
 
-func getConfig() (cfg Config) {
-	file, err := ioutil.ReadFile("config.yml")
+func getConfig() (cfg config.Config) {
+	file, err := ioutil.ReadFile("./../../config.json")
 	if err != nil {
 		fmt.Printf("Error while getting config file: %s\n", err.Error())
 		os.Exit(1)
 	}
 
-	if err := yaml.Unmarshal(file, &cfg); err != nil {
+	if err := json.Unmarshal(file, &cfg); err != nil {
 		fmt.Printf("Error while unmarshalling config file to struct: %s", err.Error())
 		os.Exit(1)
 	}
@@ -102,10 +101,10 @@ func getLogger(logLevel string) (*zap.SugaredLogger, func() error) {
 	return logger.Sugar(), logger.Sync
 }
 
-func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *Config) (*indexer.Client, func() error) {
+func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *config.Config) (*indexer.Client, func() error) {
 	conn, err := grpc.DialContext(
 		ctx,
-		cfg.Proxy.Client.URL,
+		cfg.PolkadotClientBaseURL,
 		grpc.WithInsecure(),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 	)
@@ -121,29 +120,29 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *Confi
 	)
 
 	return indexer.NewClient(
-		cfg.ChainID,
+		cfg.Worker.ChainID,
 		log,
-		cfg.Indexer.Client.Page,
+		cfg.IndexerManager.Page,
 		proxyClient,
 	), conn.Close
 }
 
-func registerWorker(ctx context.Context, log *zap.SugaredLogger, cfg *Config) {
+func registerWorker(ctx context.Context, log *zap.SugaredLogger, cfg *config.Config) {
 	workerRunID, err := uuid.NewRandom()
 	if err != nil {
 		log.Errorf("Error while creating new random id for polkadot-worker: %s", err.Error())
 	}
 
-	workerAddress := cfg.Host + cfg.ProxyPort
+	workerAddress := cfg.Worker.Address.Host + cfg.Worker.Address.Port
 
-	c := connectivity.NewWorkerConnections(workerRunID.String(), workerAddress, cfg.Network, cfg.ChainID, "0.0.1")
+	c := connectivity.NewWorkerConnections(workerRunID.String(), workerAddress, cfg.Worker.Network, cfg.Worker.ChainID, "0.0.1")
 
-	c.AddManager(cfg.Indexer.Manager.Address + "/client_ping")
+	c.AddManager(cfg.IndexerManager.BaseURL + "/client_ping")
 
 	go c.Run(ctx, log.Desugar(), 10*time.Second)
 }
 
-func createMetricsHandler(cfg *Config, log *zap.SugaredLogger) {
+func handleHTTP(log *zap.SugaredLogger, cfg *config.Config) {
 	prom := prometheusmetrics.New()
 	if err := metrics.AddEngine(prom); err != nil {
 		log.Errorf("Error wile adding prometheus metrics engine", zap.Error(err))
@@ -157,14 +156,21 @@ func createMetricsHandler(cfg *Config, log *zap.SugaredLogger) {
 	mux.Handle("/metrics", metrics.Handler())
 
 	s := &http.Server{
-		Addr:         cfg.Host + cfg.WorkerPort,
+		Addr:         cfg.Worker.Address.Host + cfg.Worker.Address.Port,
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
 
-	log.Infof("Handling metrics on port %s", cfg.WorkerPort)
+	log.Infof("HTTP handler listening on port %s", cfg.Worker.Address.Port)
+
 	if err := s.ListenAndServe(); err != nil {
-		log.Error("Error while listening on %s port", cfg.WorkerPort, zap.Error(err))
+		log.Error("Error while listening on %s port", cfg.Worker.Address.Port, zap.Error(err))
 	}
+}
+
+func serveGRPC(log *zap.SugaredLogger, grpcServer *grpc.Server, lis net.Listener, port string) {
+	log.Infof("gRPC server listening on port %s", port)
+
+	grpcServer.Serve(lis)
 }

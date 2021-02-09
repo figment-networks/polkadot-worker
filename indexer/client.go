@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/figment-networks/indexing-engine/metrics"
-	"github.com/figment-networks/polkadot-worker/worker/mapper"
-	"github.com/figment-networks/polkadot-worker/worker/proxy"
+	"github.com/figment-networks/polkadot-worker/mapper"
+	"github.com/figment-networks/polkadot-worker/proxy"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
@@ -21,8 +21,10 @@ import (
 	"go.uber.org/zap"
 )
 
-var errBadRequest = errors.New("bad request")
 var (
+	// ErrBadRequest is returned when cannot unmarshal message
+	ErrBadRequest = errors.New("bad request")
+
 	getTransactionDuration *metrics.GroupObserver
 	getLatestDuration      *metrics.GroupObserver
 )
@@ -120,7 +122,7 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 	var err error
 
 	if err = json.Unmarshal(tr.Payload, &ldr); ldr.LastHeight == 0 {
-		err = errBadRequest
+		err = ErrBadRequest
 	}
 
 	if err != nil {
@@ -179,7 +181,7 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 	var err error
 
 	if err = json.Unmarshal(tr.Payload, &hr); hr.StartHeight == 0 || hr.EndHeight == 0 {
-		err = errBadRequest
+		err = ErrBadRequest
 	}
 
 	if err != nil {

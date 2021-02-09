@@ -3,7 +3,7 @@ package mapper
 import (
 	"strconv"
 
-	"github.com/figment-networks/polkadot-worker/worker/proxy"
+	"github.com/figment-networks/polkadot-worker/proxy"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
