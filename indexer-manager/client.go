@@ -11,7 +11,7 @@ import (
 
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadot-worker/mapper"
-	"github.com/figment-networks/polkadot-worker/proxy"
+	proxy "github.com/figment-networks/polkadot-worker/polkadot-proxy"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"

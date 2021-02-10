@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/figment-networks/indexing-engine/metrics"
-	"github.com/figment-networks/polkadot-worker/indexer"
-	"github.com/figment-networks/polkadot-worker/proxy"
+	"github.com/figment-networks/polkadot-worker/indexer-manager"
+	proxy "github.com/figment-networks/polkadot-worker/polkadot-proxy"
 	"github.com/figment-networks/polkadot-worker/utils"
 
 	"github.com/figment-networks/indexer-manager/structs"

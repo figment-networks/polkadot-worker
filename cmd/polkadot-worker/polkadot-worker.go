@@ -10,9 +10,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/figment-networks/polkadot-worker/celo-proxy"
 	"github.com/figment-networks/polkadot-worker/config"
-	"github.com/figment-networks/polkadot-worker/indexer"
-	"github.com/figment-networks/polkadot-worker/proxy"
+	"github.com/figment-networks/polkadot-worker/indexer-manager"
+	proxy "github.com/figment-networks/polkadot-worker/polkadot-proxy"
 
 	"github.com/figment-networks/indexer-manager/worker/connectivity"
 	grpcIndexer "github.com/figment-networks/indexer-manager/worker/transport/grpc"
@@ -48,11 +49,26 @@ func main() {
 
 	lis, err := net.Listen("tcp", cfg.Worker.Address.Host+cfg.Worker.Address.Port)
 	if err != nil {
-		log.Errorf("Error while listening on %s port", cfg.PolkadotClientBaseURL, zap.Error(err))
+		log.Errorf("Error while listening on %s port", cfg.Worker.Address.Port, zap.Error(err))
 		return
 	}
 
 	go handleHTTP(log, &cfg)
+
+	fmt.Println("celo base url:", cfg.CeloClientBaseURL)
+	celoClient, err := celo.New(cfg.CeloClientBaseURL)
+	if err != nil {
+		log.Errorf("Error while creating celo client", zap.Error(err))
+		return
+	}
+	defer celoClient.Close()
+
+	block, err := celoClient.GetBlockByHeight(context.Background(), 540)
+	if err != nil {
+		log.Error("Error while getting block by height", zap.Error(err))
+		return
+	}
+	fmt.Println("block: ", block)
 
 	serveGRPC(log, grpcServer, lis, cfg.PolkadotClientBaseURL)
 }

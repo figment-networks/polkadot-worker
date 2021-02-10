@@ -3,7 +3,8 @@ package config
 // Config struct for config.yml
 type Config struct {
 	Worker                WorkerConfig
-	PolkadotClientBaseURL string
+	CeloClientBaseURL     string               `json:"celo_client_base_url"`
+	PolkadotClientBaseURL string               `json:"polkadot_client_base_url"`
 	IndexerManager        IndexerManagerConfig `json:"indexer_manager"`
 }
 

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/figment-networks/polkadot-worker/proxy"
+	proxy "github.com/figment-networks/polkadot-worker/polkadot-proxy"
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
