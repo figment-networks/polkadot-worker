@@ -18,6 +18,7 @@ all: build
 build: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.Timestamp=$(shell date +%s)
 build: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.Version=$(VERSION)
 build: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.GitSHA=$(GIT_SHA)
+build: LDFLAGS += -lpthread
 build:
 	go build -o polkadot-worker -ldflags '$(LDFLAGS)'  ./cmd/polkadot-worker
 
