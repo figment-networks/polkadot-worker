@@ -28,7 +28,10 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-var chainID = "chainID"
+var (
+	chainID = "chainID"
+	version = "0.0.1"
+)
 
 type IndexerClientTest struct {
 	suite.Suite
@@ -50,7 +53,7 @@ func (ic *IndexerClientTest) SetupTest() {
 
 	proxyClientMock := proxyClientMock{}
 
-	ic.Client = indexer.NewClient(chainID, log.Sugar(), page, &proxyClientMock)
+	ic.Client = indexer.NewClient(log.Sugar(), &proxyClientMock, page, chainID, version)
 	ic.ProxyClient = &proxyClientMock
 }
 

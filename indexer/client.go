@@ -34,14 +34,14 @@ type Client struct {
 	sLock   sync.Mutex
 	streams map[uuid.UUID]*cStructs.StreamAccess
 
-	chainID string
-	log     *zap.SugaredLogger
-	page    uint64
-	proxy   proxy.ClientIface
+	chainID, version string
+	log              *zap.SugaredLogger
+	page             uint64
+	proxy            proxy.ClientIface
 }
 
 // NewClient is a indexer-manager Client constructor
-func NewClient(chainID string, log *zap.SugaredLogger, page uint64, proxy proxy.ClientIface) *Client {
+func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, page uint64, chainID, version string) *Client {
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
 
@@ -51,6 +51,7 @@ func NewClient(chainID string, log *zap.SugaredLogger, page uint64, proxy proxy.
 		page:    page,
 		proxy:   proxy,
 		streams: make(map[uuid.UUID]*cStructs.StreamAccess),
+		version: version,
 	}
 }
 
@@ -402,7 +403,7 @@ func (c *Client) getTransactions(ctx context.Context, out chan cStructs.OutResp,
 		return nil
 	}
 
-	transactionMapped, e := mapper.TransactionMapper(block, c.chainID, events, transactions)
+	transactionMapped, e := mapper.TransactionMapper(block, events, transactions, c.chainID, c.version)
 	if e != nil {
 		err <- e
 		ctx.Done()

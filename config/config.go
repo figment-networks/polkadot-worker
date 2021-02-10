@@ -2,9 +2,9 @@ package config
 
 // Config struct for config.yml
 type Config struct {
-	Worker                WorkerConfig
-	PolkadotClientBaseURL string
-	IndexerManager        IndexerManagerConfig `json:"indexer_manager"`
+	Worker         WorkerConfig
+	ProxyBaseURL   string               `json:"proxy_base_url"`
+	IndexerManager IndexerManagerConfig `json:"indexer_manager"`
 }
 
 // WorkerConfig config

@@ -12,6 +12,7 @@ import (
 
 	"github.com/figment-networks/polkadot-worker/config"
 	"github.com/figment-networks/polkadot-worker/indexer"
+	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/proxy"
 
 	"github.com/figment-networks/indexer-manager/worker/connectivity"
@@ -48,13 +49,13 @@ func main() {
 
 	lis, err := net.Listen("tcp", cfg.Worker.Address.Host+cfg.Worker.Address.Port)
 	if err != nil {
-		log.Errorf("Error while listening on %s port", cfg.PolkadotClientBaseURL, zap.Error(err))
+		log.Errorf("Error while listening on port", cfg.Worker.Address.Port, zap.Error(err))
 		return
 	}
 
 	go handleHTTP(log, &cfg)
 
-	serveGRPC(log, grpcServer, lis, cfg.PolkadotClientBaseURL)
+	serveGRPC(log, grpcServer, lis, cfg.ProxyBaseURL)
 }
 
 func getConfig() (cfg config.Config) {
@@ -104,7 +105,7 @@ func getLogger(logLevel string) (*zap.SugaredLogger, func() error) {
 func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *config.Config) (*indexer.Client, func() error) {
 	conn, err := grpc.DialContext(
 		ctx,
-		cfg.PolkadotClientBaseURL,
+		cfg.ProxyBaseURL,
 		grpc.WithInsecure(),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 	)
@@ -119,11 +120,40 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		transactionpb.NewTransactionServiceClient(conn),
 	)
 
+	height := uint64(3727651)
+	block, err := proxyClient.GetBlockByHeight(ctx, height)
+	if err != nil {
+		log.Error("Error while getting block", zap.Error(err))
+		return nil, nil
+	}
+
+	transactions, err := proxyClient.GetTransactionByHeight(ctx, height)
+	if err != nil {
+		log.Error("Error while getting transactions", zap.Error(err))
+		return nil, nil
+	}
+
+	events, err := proxyClient.GetEventByHeight(ctx, height)
+	if err != nil {
+		log.Error("Error while getting events", zap.Error(err))
+		return nil, nil
+	}
+
+	result, err := mapper.TransactionMapper(block, events, transactions, cfg.Worker.ChainID, cfg.Worker.Version)
+	if err != nil {
+		log.Error("Error mapping transaction", zap.Error(err))
+		return nil, nil
+	}
+	for _, r := range result {
+		fmt.Printf("result:\n%#v\n", r)
+	}
+
 	return indexer.NewClient(
-		cfg.Worker.ChainID,
 		log,
-		cfg.IndexerManager.Page,
 		proxyClient,
+		cfg.IndexerManager.Page,
+		cfg.Worker.ChainID,
+		cfg.Worker.Version,
 	), conn.Close
 }
 

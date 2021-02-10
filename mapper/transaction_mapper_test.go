@@ -29,6 +29,7 @@ type TransactionMapTest struct {
 	Time1, Time2           string
 	TrHash1, TrHash2       string
 	TrIndex1, TrIndex2     int64
+	Version                string
 
 	BlockRes       *blockpb.GetByHeightResponse
 	EventRes       *eventpb.GetByHeightResponse
@@ -37,6 +38,7 @@ type TransactionMapTest struct {
 
 func (tm *TransactionMapTest) SetupTest() {
 	tm.ChainID = "chainID"
+	tm.Version = "0.0.1"
 	tm.BlockHash = "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf"
 	tm.Height = int64(120)
 	tm.EvIds = [][2]int64{{1, 3}, {2, 2}}
@@ -63,35 +65,35 @@ func (tm *TransactionMapTest) SetupTest() {
 }
 
 func (tm *TransactionMapTest) TestTransactionMap_EmptyResponse() {
-	transaction, err := mapper.TransactionMapper(nil, tm.ChainID, tm.EventRes, tm.TransactionRes)
+	transaction, err := mapper.TransactionMapper(nil, tm.EventRes, tm.TransactionRes, tm.ChainID, tm.Version)
 
 	tm.Require().Nil(transaction)
 	tm.Require().Nil(err)
 
-	transaction, err = mapper.TransactionMapper(tm.BlockRes, tm.ChainID, nil, tm.TransactionRes)
+	transaction, err = mapper.TransactionMapper(tm.BlockRes, nil, tm.TransactionRes, tm.ChainID, tm.Version)
 
 	tm.Require().Nil(transaction)
 	tm.Require().Nil(err)
 
-	transaction, err = mapper.TransactionMapper(tm.BlockRes, tm.ChainID, tm.EventRes, nil)
+	transaction, err = mapper.TransactionMapper(tm.BlockRes, tm.EventRes, nil, tm.ChainID, tm.Version)
 
 	tm.Require().Nil(transaction)
 	tm.Require().Nil(err)
 }
 
-// func (tm *TransactionMapTest) TestTransactionMap_TimeParsingError() {
-// 	tm.TransactionRes.Transactions[0].Time = "[object Object]"
+func (tm *TransactionMapTest) TestTransactionMap_TimeParsingError() {
+	tm.TransactionRes.Transactions[0].Time = "[object Object]"
 
-// 	transaction, err := mapper.TransactionMapper(tm.BlockRes, tm.ChainID, tm.EventRes, tm.TransactionRes)
+	transaction, err := mapper.TransactionMapper(tm.BlockRes, tm.EventRes, tm.TransactionRes, tm.ChainID, tm.Version)
 
-// 	tm.Require().Nil(transaction)
+	tm.Require().Nil(transaction)
 
-// 	tm.Require().NotNil(err)
-// 	tm.Require().Contains(err.Error(), "Could not parse transaction time: strconv.Atoi: parsing \"[object Object]\": invalid syntax")
-// }
+	tm.Require().NotNil(err)
+	tm.Require().Contains(err.Error(), "Could not parse transaction time: strconv.Atoi: parsing \"[object Object]\": invalid syntax")
+}
 
 func (tm *TransactionMapTest) TestTransactionMap_OK() {
-	transaction, err := mapper.TransactionMapper(tm.BlockRes, tm.ChainID, tm.EventRes, tm.TransactionRes)
+	transaction, err := mapper.TransactionMapper(tm.BlockRes, tm.EventRes, tm.TransactionRes, tm.ChainID, tm.Version)
 
 	tm.Require().Nil(err)
 
@@ -104,8 +106,8 @@ func (tm *TransactionMapTest) TestTransactionMap_OK() {
 	tm.Require().Equal(tm.TrHash1, transaction[0].Hash)
 	tm.Require().Equal(tm.Time1, transaction[0].Epoch)
 
-	// timeInt, _ := strconv.Atoi(tm.TransactionRes.Transactions[0].Time)
-	// tm.Require().Equal(time.Unix(int64(timeInt), 0), transaction[0].Time)
+	timeInt1, _ := strconv.Atoi(tm.Time1)
+	tm.Require().Equal(time.Unix(int64(timeInt1), 0), transaction[0].Time)
 
 	tm.Require().Equal(tm.Fee1, transaction[0].Fee[0].Text)
 	tm.Require().Equal("0.0.1", transaction[0].Version)
@@ -114,8 +116,8 @@ func (tm *TransactionMapTest) TestTransactionMap_OK() {
 	tm.Require().Equal(tm.TrHash2, transaction[1].Hash)
 	tm.Require().Equal(tm.Time2, transaction[1].Epoch)
 
-	// timeInt, _ := strconv.Atoi(tm.TransactionRes.Transactions[0].Time)
-	// tm.Require().Equal(time.Unix(int64(timeInt), 0), transaction[0].Time)
+	timeInt2, _ := strconv.Atoi(tm.Time2)
+	tm.Require().Equal(time.Unix(int64(timeInt2), 0), transaction[1].Time)
 
 	tm.Require().Equal(tm.Fee2, transaction[1].Fee[0].Text)
 	tm.Require().Equal("0.0.1", transaction[1].Version)
