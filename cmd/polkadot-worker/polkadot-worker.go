@@ -23,6 +23,7 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/validator/validatorpb"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -118,6 +119,7 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		blockpb.NewBlockServiceClient(conn),
 		eventpb.NewEventServiceClient(conn),
 		transactionpb.NewTransactionServiceClient(conn),
+		validatorpb.NewValidatorServiceClient(conn),
 	)
 
 	height := uint64(3727651)
@@ -127,25 +129,41 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		return nil, nil
 	}
 
-	transactions, err := proxyClient.GetTransactionByHeight(ctx, height)
+	transactions, err := proxyClient.GetTransactionsByHeight(ctx, height)
 	if err != nil {
 		log.Error("Error while getting transactions", zap.Error(err))
 		return nil, nil
 	}
 
-	events, err := proxyClient.GetEventByHeight(ctx, height)
+	events, err := proxyClient.GetEventsByHeight(ctx, height)
 	if err != nil {
 		log.Error("Error while getting events", zap.Error(err))
 		return nil, nil
 	}
 
-	result, err := mapper.TransactionMapper(block, events, transactions, cfg.Worker.ChainID, cfg.Worker.Version)
+	validators, err := proxyClient.GetValidatorsByHeight(ctx, height)
+	if err != nil {
+		log.Error("Error while getting events", zap.Error(err))
+		return nil, nil
+	}
+	fmt.Printf("vxalidators:\n%3v\n", validators)
+
+	result, err := mapper.TransactionMapper(
+		log,
+		block,
+		events,
+		transactions,
+		cfg.Worker.ChainID,
+		cfg.Worker.Version,
+		cfg.Worker.Currency,
+	)
 	if err != nil {
 		log.Error("Error mapping transaction", zap.Error(err))
 		return nil, nil
 	}
-	for _, r := range result {
-		fmt.Printf("result:\n%#v\n", r)
+	for i, r := range result {
+		fmt.Println("height:", r.Height)
+		fmt.Printf("result %i:\n\n%3v\n\n%#v\n\n", i, r, r)
 	}
 
 	return indexer.NewClient(
@@ -153,6 +171,7 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		proxyClient,
 		cfg.IndexerManager.Page,
 		cfg.Worker.ChainID,
+		cfg.Worker.Currency,
 		cfg.Worker.Version,
 	), conn.Close
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/figment-networks/polkadot-worker/proxy"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
@@ -29,7 +30,8 @@ var (
 )
 
 // TransactionMapper maps Block and Transaction response into database Transcation struct
-func TransactionMapper(blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse, transactionRes *transactionpb.GetByHeightResponse, chainID, version string) ([]*structs.Transaction, error) {
+func TransactionMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse,
+	transactionRes *transactionpb.GetByHeightResponse, chainID, currency, version string) ([]*structs.Transaction, error) {
 	timer := metrics.NewTimer(proxy.TransactionConversionDuration)
 	defer timer.ObserveDuration()
 
@@ -43,9 +45,14 @@ func TransactionMapper(blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.
 
 	fmt.Println("blockHash: ", blockHash, "\nheight: ", height)
 
+	allEvents, err := parseEvents(log, eventRes, currency)
+	if err != nil {
+		return nil, err
+	}
+
 	var transactions []*structs.Transaction
 	for _, t := range transactionRes.Transactions {
-		if !isUnique(transactionMap, t.Hash) {
+		if !isTransactionUnique(transactionMap, t.Hash) {
 			continue
 		}
 
@@ -61,20 +68,18 @@ func TransactionMapper(blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.
 
 		fmt.Println("partial fee: ", t.PartialFee)
 
-		fmt.Println("FEE ???\n[]TRANSACTION AMOUNT\n(text,currency,numeric,exp)")
+		fmt.Println("FEE \n[]TRANSACTION AMOUNT\n(text,currency,numeric,exp)")
 
 		fee := []structs.TransactionAmount{{
 			Text:     t.PartialFee,
-			Currency: "",
+			Currency: currency,
 			Numeric:  big.NewInt(int64(feeInt)),
 			Exp:      0,
 		}}
 
-		parseEvents(eventRes, strconv.Itoa(int(t.Nonce)), time)
+		fmt.Println("TRANSACTION\nHash:", t.Hash, "\nblockHash: ", blockHash, "\nheight: ", height, "\nuheight: ", uint64(height), "\nepoch: ", t.Time, "\nhas errors: ", !t.IsSuccess)
 
-		fmt.Println("TRANSACTION\nHash:", t.Hash, "\nblockHash: ", blockHash, "\nheight: ", height, "\nepoch: ", t.Time, "\nhas errors: ", !t.IsSuccess)
-
-		fmt.Println("(gasUsed,memo)")
+		fmt.Println("time, nonce:", time, t.Nonce)
 
 		transactions = append(transactions, &structs.Transaction{
 			Hash:      t.Hash,
@@ -87,7 +92,7 @@ func TransactionMapper(blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.
 			GasUsed:   0,
 			Memo:      "",
 			Version:   version,
-			Events:    nil,
+			Events:    allEvents.getEventsByTrIndex(t.ExtrinsicIndex, strconv.Itoa(int(t.Nonce)), t.Hash, time),
 			Raw:       []byte{},
 			RawLog:    []byte{},
 			HasErrors: !t.IsSuccess,
@@ -97,13 +102,12 @@ func TransactionMapper(blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.
 	return transactions, nil
 }
 
-func isUnique(transactionMap map[string]struct{}, hash string) bool {
+func isTransactionUnique(transactionMap map[string]struct{}, hash string) bool {
 	if _, ok := transactionMap[hash]; !ok {
 		transactionMap[hash] = struct{}{}
 		return true
 	}
 
-	fmt.Println("not unique, skipping ", hash)
 	return false
 }
 
@@ -117,252 +121,163 @@ func parseTime(timeStr string) (*time.Time, error) {
 	return &time, nil
 }
 
-// type trCount struct {
-// 	transaction []structs.TransactionEvent
-// 	count
-// }
+type eventMap map[int64][]structs.TransactionEvent
 
-func parseEvents(eventRes *eventpb.GetByHeightResponse, nonce string, time *time.Time) map[int64][]*structs.TransactionEvent {
+func (e eventMap) getEventsByTrIndex(index int64, nonce, trHash string, time *time.Time) []structs.TransactionEvent {
+	evts, ok := e[index]
+	if !ok {
+		return nil
+	}
+
+	events := make([]structs.TransactionEvent, len(evts))
+
+	for i, evt := range evts {
+		event := evt
+
+		event.Sub = subWithNonceAndTime(&event.Sub, nonce, time)
+
+		events[i] = event
+	}
+
+	return events
+}
+
+func subWithNonceAndTime(subs *[]structs.SubsetEvent, nonce string, time *time.Time) []structs.SubsetEvent {
+	events := make([]structs.SubsetEvent, len(*subs))
+
+	for i, sub := range *subs {
+		event := sub
+
+		event.Completion = time
+		event.Nonce = nonce
+		event.Sub = subWithNonceAndTime(&event.Sub, nonce, time)
+
+		events[i] = event
+	}
+
+	return events
+}
+
+func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, currency string) (eventMap, error) {
+	evIndexMap := make(map[int64]struct{})
 	trIndexMap := make(map[int64]struct{})
 
-	// key == trIndex
-	events := make(map[int64][]*structs.TransactionEvent)
+	events := make(map[int64][]structs.TransactionEvent)
 	for _, e := range eventRes.Events {
+		if !isEventUnique(evIndexMap, e.Index) {
+			continue
+		}
+
 		if _, ok := trIndexMap[e.ExtrinsicIndex]; !ok {
 			trIndexMap[e.ExtrinsicIndex] = struct{}{}
-			events[e.ExtrinsicIndex] = make([]*structs.TransactionEvent, 0)
+			events[e.ExtrinsicIndex] = make([]structs.TransactionEvent, 0)
 		}
 
+		fmt.Println("phase: ", e.Phase, " method: ", e.Method)
+
+		var sub structs.SubsetEvent
+		var eventError *structs.SubsetEventError
+		var kind, module string
+		var eventType []string
 		subs := make([]structs.SubsetEvent, 0)
-		sub := structs.SubsetEvent{}
-
-		// ?? key from what?
 		node := make(map[string][]structs.Account)
+
 		accounts := make([]structs.Account, 0)
-		// ?? key from what??
-		amounts := make(map[string]structs.TransactionAmount)
-		// ?? key from what??
 		transferMap := make(map[string][]structs.EventTransfer)
-		transfers := make([]structs.EventTransfer, 0)
 
-		var dispatchInfo *dispatchInfo
-		var dispatchError *dispatchError
-		accountID, senderAccountID, recipientID, value := "", "", "", ""
-
-		dataLen := len(e.Data)
-
-		values := getValues(e.Description)
-		fmt.Printf("values: %q\n", values)
-		for i, v := range values {
-			if i >= dataLen {
-				fmt.Println("fatal, should never happen")
-				return nil
-			}
-
-			switch v {
-			case "account", "who":
-				accountID = getAccountID(e.Data[i])
-				break
-			case "error":
-				dispatchError = getDispatchError(e.Data[i])
-				break
-			case "from":
-				senderAccountID = getAccountID(e.Data[i])
-				break
-			case "info":
-				dispatchInfo = getDispatchInfo(e.Data[i])
-				break
-			case "to":
-				recipientID = getAccountID(e.Data[i])
-				break
-			case "deposit", "free_balance", "value":
-				value = getBalance(e.Data[i])
-				break
-			default:
-				fmt.Println("don't know what to do with ", v)
-			}
+		ev, err := getEventValues(log, e)
+		if err != nil {
+			return nil, err
 		}
 
-		if accountID != "" {
-			account := structs.Account{
-				ID: accountID,
-			}
+		appendDispatchInfo(ev.dispatchInfo)
+		appendDispatchError(ev.dispatchError, eventError, &eventType, &kind, &module)
 
-			accounts = append(accounts, account)
-		}
+		appendAccount(ev.accountID, &accounts)
+		amount := getAmount(ev.value, currency)
+		appendSender(ev.accountID, &accounts, &amount, &sub.Sender)
+		appendRecipient(ev.accountID, &accounts, &amount, &sub.Recipient, transferMap)
 
-		if dispatchInfo != nil {
-			fmt.Printf("dispatchInfo: %3v\n", &dispatchInfo)
-		}
-
-		if dispatchError != nil {
-			fmt.Printf("dispatchError: %3v\n", &dispatchError)
-		}
-
-		var senderAndReciverAmount []structs.TransactionAmount
-		if value != "" {
-			n := new(big.Int)
-			n, ok := n.SetString(value, 10)
-			if !ok {
-				fmt.Println("could not create big int from value ", value)
-			}
-
-			amount := structs.TransactionAmount{
-				Text: value,
-				// ??
-				Currency: "",
-				Numeric:  n,
-				// ??
-				Exp: 0,
-			}
-
-			amounts[""] = amount
-
-			senderAndReciverAmount = []structs.TransactionAmount{amount}
-		} else {
-			senderAndReciverAmount = nil
-		}
-
-		if senderAccountID != "" {
-			account := structs.Account{
-				ID: senderAccountID,
-			}
-
-			eventTransfer := structs.EventTransfer{
-				Account: account,
-				Amounts: senderAndReciverAmount,
-			}
-
-			sub.Sender = []structs.EventTransfer{
-				eventTransfer,
-			}
-
-			accounts = append(accounts, account)
-			transfers = append(transfers, eventTransfer)
-		}
-
-		if recipientID != "" {
-			account := structs.Account{
-				ID: recipientID,
-			}
-
-			eventTransfer := structs.EventTransfer{
-				Account: account,
-				Amounts: senderAndReciverAmount,
-			}
-
-			sub.Recipient = []structs.EventTransfer{
-				eventTransfer,
-			}
-
-			accounts = append(accounts, account)
-			transfers = append(transfers, eventTransfer)
-		}
-
-		sub.Completion = time
-		node[""] = accounts
+		node["versions"] = accounts
 		sub.Node = node
-		sub.Nonce = nonce
-		transferMap[""] = transfers
-		sub.Transfers = transferMap
 
-		// sub.Type = ?
+		sub.Transfers = transferMap
+		sub.Type = eventType
+
+		if eventError != nil {
+			sub.Error = eventError
+		}
+
 		// sub.Action = ?
 		// sub.Module = ?
 		// sub.Additional = ?
 
 		subs = append(subs, sub)
 
-		events[e.ExtrinsicIndex] = append(events[e.ExtrinsicIndex], &structs.TransactionEvent{
-			ID: strconv.Itoa(int(e.Index)),
-			// ??
-			Kind: "",
+		events[e.ExtrinsicIndex] = append(events[e.ExtrinsicIndex], structs.TransactionEvent{
+			ID:   strconv.Itoa(int(e.Index)),
+			Kind: kind,
 			Sub:  subs,
 		})
 
 	}
 
-	// events := make([]structs.TransactionEvent, 0)
-	// for _, e := range eventRes.Events {
-	// 	fmt.Println("\n\nIndex: ", e.Index, "\nDescription: ", e.Description, "\nmethod: ", e.Method, "\nphase: ", e.Phase, "\nsection: ", e.Section)
-	// 	value := ""
-	// 	for _, d := range e.Data {
-	// 		value += d.Value
-	// 		fmt.Println("name ", d.Name, " value ", d.Value)
-	// 	}
+	return events, nil
+}
 
-	// 	fmt.Println("\nCurrency = ? Numeric = ? Exp = ?")
+func isEventUnique(evIndexMap map[int64]struct{}, evIdx int64) bool {
+	if _, ok := evIndexMap[evIdx]; !ok {
+		evIndexMap[evIdx] = struct{}{}
+		return true
+	}
+	return false
+}
 
-	// 	amount := structs.TransactionAmount{
-	// 		Text:     value,
-	// 		Currency: "",
-	// 		Numeric:  nil,
-	// 		Exp:      0,
-	// 	}
+type eventValues struct {
+	accountID          *string
+	senderAccountID    *string
+	recipientAccountID *string
+	dispatchInfo       *dispatchInfo
+	dispatchError      *dispatchError
+	value              *string
+}
 
-	// 	if e.ExtrinsicIndex == trIndex {
-	// 		sender := structs.EventTransfer{
-	// 			Account: structs.Account{
-	// 				ID: "",
-	// 				Details: &structs.AccountDetails{
-	// 					Description: "",
-	// 					Contact:     "",
-	// 					Name:        "",
-	// 					Website:     "",
-	// 				},
-	// 			},
-	// 			Amounts: []structs.TransactionAmount{amount},
-	// 		}
-	// 		recipient := structs.EventTransfer{
-	// 			Account: structs.Account{
-	// 				ID: "",
-	// 				Details: &structs.AccountDetails{
-	// 					Description: "",
-	// 					Contact:     "",
-	// 					Name:        "",
-	// 					Website:     "",
-	// 				},
-	// 			},
-	// 			Amounts: []structs.TransactionAmount{amount},
-	// 		}
+func getEventValues(log *zap.SugaredLogger, event *eventpb.Event) (ev eventValues, err error) {
+	dataLen := len(event.Data)
 
-	// 		fmt.Println("EVENT TRANSFER\n(account,amounts)(in:sender,recipient)")
+	values := getValues(event.Description)
+	fmt.Printf("values: %q\n", values)
+	for i, v := range values {
+		if i >= dataLen {
+			err = fmt.Errorf("Not enough data to parse all event values")
+			return
+		}
 
-	// 		// ??? what is the key ???
-	// 		transfers := make(map[string][]structs.EventTransfer, 0)
-	// 		transfers[""] = []structs.EventTransfer{sender}
-	// 		transfers[""] = []structs.EventTransfer{recipient}
+		switch v {
+		case "account":
+			ev.accountID = getAccountID(event.Data[i])
+		case "error":
+			ev.dispatchError, err = getDispatchError(event.Data[i])
+			if err != nil {
+				return eventValues{}, err
+			}
+		case "from":
+			ev.senderAccountID = getAccountID(event.Data[i])
+		case "info":
+			ev.dispatchInfo, err = getDispatchInfo(event.Data[i])
+			if err != nil {
+				return eventValues{}, err
+			}
+		case "to", "who":
+			ev.recipientAccountID = getAccountID(event.Data[i])
+		case "deposit", "free_balance", "value":
+			ev.value = getBalance(event.Data[i])
+		default:
+			log.Error("Unknown value to parse event", zap.String("event_value", v))
+		}
+	}
 
-	// 		fmt.Println("SUBSET EVENT\nnonce: ", nonce, "\n(type,action,module,sender,recipient,node(all accounts),completion,amount,transfers,error,additional,sub)")
-
-	// 		subs := []structs.SubsetEvent{{
-	// 			Type:       []string{},
-	// 			Action:     "",
-	// 			Module:     "",
-	// 			Sender:     []structs.EventTransfer{sender},
-	// 			Recipient:  []structs.EventTransfer{recipient},
-	// 			Node:       map[string][]structs.Account{},
-	// 			Nonce:      nonce,
-	// 			Completion: time,
-	// 			Amount:     map[string]structs.TransactionAmount{},
-	// 			Transfers:  transfers,
-	// 			Error:      &structs.SubsetEventError{},
-
-	// 			// What should be here?
-	// 			Additional: map[string][]string{},
-	// 			Sub:        []structs.SubsetEvent{},
-	// 		}}
-
-	// 		fmt.Println("TRANSACTION EVENT\nkind = ? subs = ? ")
-
-	// 		events = append(events, structs.TransactionEvent{
-	// 			ID:   strconv.Itoa(int(e.Index)),
-	// 			Kind: "",
-	// 			Sub:  subs,
-	// 		})
-	// 	}
-	// }
-	return events
+	return
 }
 
 func getValues(description string) []string {
@@ -377,44 +292,200 @@ func getValues(description string) []string {
 	return values
 }
 
-func getValue(data *eventpb.EventData, expected string) string {
+func getValue(data *eventpb.EventData, expected string) *string {
 	if data.Name != expected {
 		fmt.Printf("unexpected data name %q expected %q value %q", data.Name, expected, data.Value)
 	}
 
-	return data.Value
+	return &data.Value
 }
 
-func getAccountID(data *eventpb.EventData) string {
+func getAccountID(data *eventpb.EventData) *string {
 	return getValue(data, "AccountId")
 }
 
-func getBalance(data *eventpb.EventData) string {
+func getBalance(data *eventpb.EventData) *string {
 	return getValue(data, "Balance")
 }
 
 type dispatchInfo struct {
-	weight         int64
-	class, paysFee string
+	weight  float64
+	class   string
+	paysFee string
 }
 
-func getDispatchInfo(data *eventpb.EventData) (dispatchInfo *dispatchInfo) {
+func getDispatchInfo(data *eventpb.EventData) (*dispatchInfo, error) {
+	var result map[string]interface{}
+
 	value := getValue(data, "DispatchInfo")
-	json.Unmarshal([]byte(value), dispatchInfo)
-	return
+
+	if err := json.Unmarshal([]byte(*value), &result); err != nil {
+		return nil, errors.Wrap(err, "Could not unmarshall dispatch info")
+	}
+
+	weight, ok := result["weight"]
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("Could not parse weight from %q", *value))
+	}
+
+	class, ok := result["class"]
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("Could not parse class from %q", *value))
+	}
+
+	paysFee, ok := result["paysFee"]
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("Could not parse paysFee from %q", *value))
+	}
+
+	fmt.Println(" weight class paysFee: ", weight, class, paysFee)
+
+	return &dispatchInfo{
+		weight:  weight.(float64),
+		class:   class.(string),
+		paysFee: paysFee.(string),
+	}, nil
 }
 
 type dispatchError struct {
-	Module module
+	module module
 }
 
 type module struct {
-	index int64
-	error int64
+	index float64
+	err   float64
 }
 
-func getDispatchError(data *eventpb.EventData) (dispatchError *dispatchError) {
+func getDispatchError(data *eventpb.EventData) (*dispatchError, error) {
+	var result map[string]interface{}
+
 	value := getValue(data, "DispatchError")
-	json.Unmarshal([]byte(value), dispatchError)
-	return
+
+	if err := json.Unmarshal([]byte(*value), &result); err != nil {
+		return nil, errors.Wrap(err, "Could not unmarshall dispatch info")
+	}
+
+	errModule, ok := result["Module"]
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("Could not parse Module from %q", *value))
+	}
+
+	index, ok := errModule.(map[string]interface{})["index"]
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("Could not parse index from %q", *value))
+	}
+
+	eventError, ok := errModule.(map[string]interface{})["error"]
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("Could not parse error from %q", *value))
+	}
+
+	fmt.Println(" index error: ", index, eventError)
+
+	return &dispatchError{
+		module: module{
+			index: index.(float64),
+			err:   eventError.(float64),
+		},
+	}, nil
+}
+
+func appendAccount(accountID *string, accounts *[]structs.Account) {
+	if accountID == nil {
+		return
+	}
+	account := structs.Account{
+		ID: *accountID,
+	}
+
+	*accounts = append(*accounts, account)
+}
+
+func appendDispatchInfo(dispatchInfo *dispatchInfo) {
+	if dispatchInfo == nil {
+		return
+	}
+	fmt.Printf("dispatchInfo: %3v\n\n%v\n", &dispatchInfo, &dispatchInfo)
+}
+
+func appendDispatchError(dispatchError *dispatchError, err *structs.SubsetEventError, eventType *[]string, kind, module *string) {
+	if dispatchError == nil {
+		return
+	}
+
+	fmt.Println("dispatch error index: ", dispatchError.module.index, " error: ", dispatchError.module.err, " module: ", dispatchError.module)
+
+	*kind = "error"
+	*eventType = []string{"error"}
+	// ???
+	*module = "exit code?"
+	err = &structs.SubsetEventError{
+		// Message: dispatchError.module.error,
+		Message: "error message",
+	}
+
+	fmt.Printf("dispatchError: %3v\n", &dispatchError)
+}
+
+func getAmount(value *string, currency string) []structs.TransactionAmount {
+	if value == nil {
+		return nil
+	}
+
+	n := new(big.Int)
+	n, ok := n.SetString(*value, 10)
+	if !ok {
+		fmt.Println("could not create big int from value ", value)
+	}
+
+	trAmount := structs.TransactionAmount{
+		Text:     *value,
+		Currency: currency,
+		Numeric:  n,
+		Exp:      0,
+	}
+
+	return []structs.TransactionAmount{trAmount}
+}
+
+func appendSender(accountID *string, accounts *[]structs.Account, amount *[]structs.TransactionAmount, sender *[]structs.EventTransfer) {
+	if accountID == nil {
+		return
+	}
+
+	account := structs.Account{
+		ID: *accountID,
+	}
+
+	eventTransfer := structs.EventTransfer{
+		Account: account,
+		Amounts: *amount,
+	}
+
+	*sender = []structs.EventTransfer{
+		eventTransfer,
+	}
+
+	*accounts = append(*accounts, account)
+}
+
+func appendRecipient(accountID *string, accounts *[]structs.Account, amount *[]structs.TransactionAmount, recipient *[]structs.EventTransfer, transferMap map[string][]structs.EventTransfer) {
+	if accountID == nil {
+		return
+	}
+	account := structs.Account{
+		ID: *accountID,
+	}
+
+	eventTransfer := structs.EventTransfer{
+		Account: account,
+		Amounts: *amount,
+	}
+
+	*recipient = []structs.EventTransfer{
+		eventTransfer,
+	}
+
+	*accounts = append(*accounts, account)
+	transferMap[*accountID] = []structs.EventTransfer{eventTransfer}
 }

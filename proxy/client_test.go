@@ -10,6 +10,7 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/validator/validatorpb"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -34,8 +35,9 @@ func (bc *BlockClientTest) SetupTest() {
 	blockClientMock := blockClientMock{}
 	eventClientMock := eventClientMock{}
 	transactionClientMock := transactionClientMock{}
+	validatorClientMock := validatorClientMock{}
 
-	bc.Client = proxy.NewClient(logger.Sugar(), &blockClientMock, &eventClientMock, &transactionClientMock)
+	bc.Client = proxy.NewClient(logger.Sugar(), &blockClientMock, &eventClientMock, &transactionClientMock, &validatorClientMock)
 	bc.BlockClientMock = &blockClientMock
 	bc.EventClientMock = &eventClientMock
 	bc.TransactionClientMock = &transactionClientMock
@@ -105,7 +107,7 @@ func (bc *BlockClientTest) TestGetEventByHeight_OK() {
 
 	bc.EventClientMock.On("GetByHeight", mock.AnythingOfType("*context.emptyCtx"), req, mock.AnythingOfType("[]grpc.CallOption")).Return(res, nil)
 
-	response, err := bc.GetEventByHeight(context.Background(), uint64(height))
+	response, err := bc.GetEventsByHeight(context.Background(), uint64(height))
 
 	bc.Require().Nil(err)
 
@@ -126,7 +128,7 @@ func (bc *BlockClientTest) TestGetEventByHeight_Error() {
 
 	bc.EventClientMock.On("GetByHeight", mock.AnythingOfType("*context.emptyCtx"), req, mock.AnythingOfType("[]grpc.CallOption")).Return(res, e)
 
-	response, err := bc.GetEventByHeight(context.Background(), uint64(height))
+	response, err := bc.GetEventsByHeight(context.Background(), uint64(height))
 
 	bc.Require().Nil(response)
 
@@ -151,7 +153,7 @@ func (bc *BlockClientTest) TestGetTransactionByHeight_OK() {
 
 	bc.TransactionClientMock.On("GetByHeight", mock.AnythingOfType("*context.emptyCtx"), req, mock.AnythingOfType("[]grpc.CallOption")).Return(res, nil)
 
-	response, err := bc.GetTransactionByHeight(context.Background(), uint64(height))
+	response, err := bc.GetTransactionsByHeight(context.Background(), uint64(height))
 
 	bc.Require().Nil(err)
 
@@ -172,7 +174,7 @@ func (bc *BlockClientTest) TestGetTransactionByHeight_Error() {
 
 	bc.TransactionClientMock.On("GetByHeight", mock.AnythingOfType("*context.emptyCtx"), req, mock.AnythingOfType("[]grpc.CallOption")).Return(res, e)
 
-	response, err := bc.GetTransactionByHeight(context.Background(), uint64(height))
+	response, err := bc.GetTransactionsByHeight(context.Background(), uint64(height))
 
 	bc.Require().Nil(response)
 
@@ -213,4 +215,13 @@ func (m transactionClientMock) GetByHeight(ctx context.Context, in *transactionp
 func (m transactionClientMock) GetAnnotatedByHeight(ctx context.Context, in *transactionpb.GetAnnotatedByHeightRequest, opts ...grpc.CallOption) (*transactionpb.GetAnnotatedByHeightResponse, error) {
 	args := m.Called(ctx, in, opts)
 	return args.Get(0).(*transactionpb.GetAnnotatedByHeightResponse), args.Error(1)
+}
+
+type validatorClientMock struct {
+	mock.Mock
+}
+
+func (m validatorClientMock) GetAllByHeight(ctx context.Context, in *validatorpb.GetAllByHeightRequest, opts ...grpc.CallOption) (*validatorpb.GetAllByHeightResponse, error) {
+	args := m.Called(ctx, in, opts)
+	return args.Get(0).(*validatorpb.GetAllByHeightResponse), args.Error(1)
 }

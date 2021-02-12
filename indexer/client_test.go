@@ -19,6 +19,7 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/validator/validatorpb"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
@@ -758,12 +759,17 @@ func (m proxyClientMock) GetBlockByHeight(ctx context.Context, height uint64) (*
 	return args.Get(0).(*blockpb.GetByHeightResponse), args.Error(1)
 }
 
-func (m proxyClientMock) GetEventByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error) {
+func (m proxyClientMock) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error) {
 	args := m.Called(ctx, height)
 	return args.Get(0).(*eventpb.GetByHeightResponse), args.Error(1)
 }
 
-func (m proxyClientMock) GetTransactionByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error) {
+func (m proxyClientMock) GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error) {
 	args := m.Called(ctx, height)
 	return args.Get(0).(*transactionpb.GetByHeightResponse), args.Error(1)
+}
+
+func (m proxyClientMock) GetValidatorsByHeight(ctx context.Context, height uint64) (*validatorpb.GetAllByHeightResponse, error) {
+	args := m.Called(ctx, height)
+	return args.Get(0).(*validatorpb.GetAllByHeightResponse), args.Error(1)
 }

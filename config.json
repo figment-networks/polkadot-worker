@@ -1,6 +1,7 @@
 {
   "worker": {
       "chain_id": "Polkadot",
+      "currency": "DOT",
       "log_level": "info",
       "network": "Polkadot",
       "version": "0.0.1",

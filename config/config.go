@@ -9,17 +9,18 @@ type Config struct {
 
 // WorkerConfig config
 type WorkerConfig struct {
-	ChainID  string
-	LogLevel string
-	Network  string
-	Version  string
+	ChainID  string `json:"chain_id"`
+	Currency string `json:"currency"`
+	LogLevel string `json:"log_level"`
+	Network  string `json:"network"`
+	Version  string `json:"version"`
 	Address  WorkerAddress
 }
 
 // WorkerAddress host and port
 type WorkerAddress struct {
-	Host string
-	Port string
+	Host string `json:"host"`
+	Port string `json:"port"`
 }
 
 // IndexerManagerConfig url and page size
