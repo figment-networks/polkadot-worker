@@ -10,14 +10,15 @@ import (
 	"time"
 
 	"github.com/figment-networks/polkadot-worker/proxy"
-	"github.com/pkg/errors"
-	"go.uber.org/zap"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
+
+	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type eventType string
@@ -61,8 +62,8 @@ func TransactionMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResp
 			return nil, err
 		}
 
-		var n *big.Int
-		feeInt, ok := n.SetString(t.PartialFee, 10)
+		feeInt := new(big.Int)
+		feeInt, ok := feeInt.SetString(t.PartialFee, 10)
 		if !ok {
 			return nil, errors.Wrap(err, "Could not parse transaction partial fee")
 		}
@@ -198,6 +199,10 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 			sub.Node = node
 		}
 
+		if ev.attributes != nil {
+			sub.Additional["attributes"] = *ev.attributes
+		}
+
 		if eventType != nil {
 			sub.Type = eventType
 		} else {
@@ -211,9 +216,6 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 		if len(transferMap) > 0 {
 			sub.Transfers = transferMap
 		}
-
-		// sub.Action = ?
-		// sub.Additional = ?
 
 		subs = append(subs, sub)
 
@@ -243,16 +245,18 @@ type eventValues struct {
 	msg                *string
 	value              *string
 
+	attributes    *[]string
 	dispatchInfo  *dispatchInfo
 	dispatchError *dispatchError
 }
 
 func getEventValues(log *zap.SugaredLogger, event *eventpb.Event) (ev eventValues, err error) {
 	dataLen := len(event.Data)
+	attributes := make([]string, dataLen)
 
 	values, msg := getValues(event.Description)
 	ev.msg = &msg
-	fmt.Printf("values: %q\n", values)
+
 	for i, v := range values {
 		if i >= dataLen {
 			err = fmt.Errorf("Not enough data to parse all event values")
@@ -281,8 +285,11 @@ func getEventValues(log *zap.SugaredLogger, event *eventpb.Event) (ev eventValue
 		default:
 			log.Error("Unknown value to parse event", zap.String("event_value", v))
 		}
+
+		attributes[i] = v
 	}
 
+	ev.attributes = &attributes
 	return
 }
 
@@ -482,6 +489,7 @@ func appendRecipient(accountID *string, accounts *[]structs.Account, amount *[]s
 	if accountID == nil {
 		return
 	}
+
 	account := structs.Account{
 		ID: *accountID,
 	}
