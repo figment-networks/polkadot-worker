@@ -61,25 +61,18 @@ func TransactionMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResp
 			return nil, err
 		}
 
-		feeInt, err := strconv.Atoi(t.PartialFee)
-		if err != nil {
+		var n *big.Int
+		feeInt, ok := n.SetString(t.PartialFee, 10)
+		if !ok {
 			return nil, errors.Wrap(err, "Could not parse transaction partial fee")
 		}
-
-		fmt.Println("partial fee: ", t.PartialFee)
-
-		fmt.Println("FEE \n[]TRANSACTION AMOUNT\n(text,currency,numeric,exp)")
 
 		fee := []structs.TransactionAmount{{
 			Text:     t.PartialFee,
 			Currency: currency,
-			Numeric:  big.NewInt(int64(feeInt)),
+			Numeric:  feeInt,
 			Exp:      0,
 		}}
-
-		fmt.Println("TRANSACTION\nHash:", t.Hash, "\nblockHash: ", blockHash, "\nheight: ", height, "\nuheight: ", uint64(height), "\nepoch: ", t.Time, "\nhas errors: ", !t.IsSuccess)
-
-		fmt.Println("time, nonce:", time, t.Nonce)
 
 		transactions = append(transactions, &structs.Transaction{
 			Hash:      t.Hash,
@@ -191,12 +184,14 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 		}
 
 		appendDispatchInfo(ev.dispatchInfo)
-		appendDispatchError(ev.dispatchError, eventError, &eventType, &kind, &module)
+		appendDispatchError(ev.dispatchError, eventError, &eventType, &kind, &module, ev.msg)
 
 		appendAccount(ev.accountID, &accounts)
 		amount := getAmount(ev.value, currency)
 		appendSender(ev.accountID, &accounts, &amount, &sub.Sender)
 		appendRecipient(ev.accountID, &accounts, &amount, &sub.Recipient, transferMap)
+
+		sub.Module = e.Section
 
 		if len(accounts) > 0 {
 			node["versions"] = accounts
@@ -205,6 +200,8 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 
 		if eventType != nil {
 			sub.Type = eventType
+		} else {
+			sub.Type = []string{e.Method}
 		}
 
 		if eventError != nil {
@@ -216,7 +213,6 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 		}
 
 		// sub.Action = ?
-		// sub.Module = ?
 		// sub.Additional = ?
 
 		subs = append(subs, sub)
@@ -242,19 +238,20 @@ func isEventUnique(evIndexMap map[int64]struct{}, evIdx int64) bool {
 
 type eventValues struct {
 	accountID          *string
-	senderAccountID    *string
 	recipientAccountID *string
-	dispatchInfo       *dispatchInfo
-	dispatchError      *dispatchError
+	senderAccountID    *string
+	msg                *string
 	value              *string
-	msg                string
+
+	dispatchInfo  *dispatchInfo
+	dispatchError *dispatchError
 }
 
 func getEventValues(log *zap.SugaredLogger, event *eventpb.Event) (ev eventValues, err error) {
 	dataLen := len(event.Data)
 
 	values, msg := getValues(event.Description)
-	ev.msg = msg
+	ev.msg = &msg
 	fmt.Printf("values: %q\n", values)
 	for i, v := range values {
 		if i >= dataLen {
@@ -424,7 +421,6 @@ func appendDispatchInfo(dispatchInfo *dispatchInfo) {
 	if dispatchInfo == nil {
 		return
 	}
-	fmt.Printf("dispatchInfo: %3v\n\n%v\n", &dispatchInfo, &dispatchInfo)
 }
 
 func appendDispatchError(dispatchError *dispatchError, err *structs.SubsetEventError, eventType *[]string, kind, module, msg *string) {
@@ -432,18 +428,12 @@ func appendDispatchError(dispatchError *dispatchError, err *structs.SubsetEventE
 		return
 	}
 
-	fmt.Println("dispatch error index: ", dispatchError.module.index, " error: ", dispatchError.module.err, " module: ", dispatchError.module)
-
 	*kind = "error"
 	*eventType = []string{"error"}
-	// ???
-	*module = "exit code?"
+
 	err = &structs.SubsetEventError{
-		// Message: dispatchError.module.error,
 		Message: *msg,
 	}
-
-	fmt.Printf("dispatchError: %3v\n", &dispatchError)
 }
 
 func getAmount(value *string, currency string) []structs.TransactionAmount {
