@@ -173,7 +173,7 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 			events[e.ExtrinsicIndex] = make([]structs.TransactionEvent, 0)
 		}
 
-		fmt.Println("phase: ", e.Phase, " method: ", e.Method)
+		fmt.Println("phase: ", e.Phase, " method: ", e.Method, " description: ", e.Description)
 
 		var sub structs.SubsetEvent
 		var eventError *structs.SubsetEventError
@@ -198,14 +198,21 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 		appendSender(ev.accountID, &accounts, &amount, &sub.Sender)
 		appendRecipient(ev.accountID, &accounts, &amount, &sub.Recipient, transferMap)
 
-		node["versions"] = accounts
-		sub.Node = node
+		if len(accounts) > 0 {
+			node["versions"] = accounts
+			sub.Node = node
+		}
 
-		sub.Transfers = transferMap
-		sub.Type = eventType
+		if eventType != nil {
+			sub.Type = eventType
+		}
 
 		if eventError != nil {
 			sub.Error = eventError
+		}
+
+		if len(transferMap) > 0 {
+			sub.Transfers = transferMap
 		}
 
 		// sub.Action = ?
@@ -240,12 +247,14 @@ type eventValues struct {
 	dispatchInfo       *dispatchInfo
 	dispatchError      *dispatchError
 	value              *string
+	msg                string
 }
 
 func getEventValues(log *zap.SugaredLogger, event *eventpb.Event) (ev eventValues, err error) {
 	dataLen := len(event.Data)
 
-	values := getValues(event.Description)
+	values, msg := getValues(event.Description)
+	ev.msg = msg
 	fmt.Printf("values: %q\n", values)
 	for i, v := range values {
 		if i >= dataLen {
@@ -280,7 +289,17 @@ func getEventValues(log *zap.SugaredLogger, event *eventpb.Event) (ev eventValue
 	return
 }
 
-func getValues(description string) []string {
+func getValues(description string) ([]string, string) {
+	desc := description[2 : len(description)-1]
+	descSlice := strings.Split(desc, `\[`)
+
+	msg := descSlice[0]
+
+	descSlice2 := strings.Split(descSlice[1], `\]`)
+	if !strings.Contains(descSlice[0], ",") && len(descSlice2[1]) > 0 && descSlice2[1][len(descSlice2[1])-1:] != "]" {
+		msg += descSlice2[0] + descSlice2[1]
+	}
+
 	vls := string(regexp.MustCompile(`\\\[.*\\\]`).Find([]byte(description)))
 	vls = vls[2 : len(vls)-2]
 
@@ -289,7 +308,7 @@ func getValues(description string) []string {
 		values[i] = strings.TrimSpace(v)
 	}
 
-	return values
+	return values, desc
 }
 
 func getValue(data *eventpb.EventData, expected string) *string {
@@ -408,7 +427,7 @@ func appendDispatchInfo(dispatchInfo *dispatchInfo) {
 	fmt.Printf("dispatchInfo: %3v\n\n%v\n", &dispatchInfo, &dispatchInfo)
 }
 
-func appendDispatchError(dispatchError *dispatchError, err *structs.SubsetEventError, eventType *[]string, kind, module *string) {
+func appendDispatchError(dispatchError *dispatchError, err *structs.SubsetEventError, eventType *[]string, kind, module, msg *string) {
 	if dispatchError == nil {
 		return
 	}
@@ -421,7 +440,7 @@ func appendDispatchError(dispatchError *dispatchError, err *structs.SubsetEventE
 	*module = "exit code?"
 	err = &structs.SubsetEventError{
 		// Message: dispatchError.module.error,
-		Message: "error message",
+		Message: *msg,
 	}
 
 	fmt.Printf("dispatchError: %3v\n", &dispatchError)
