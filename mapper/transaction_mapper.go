@@ -62,18 +62,10 @@ func TransactionMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResp
 			return nil, err
 		}
 
-		feeInt := new(big.Int)
-		feeInt, ok := feeInt.SetString(t.PartialFee, 10)
-		if !ok {
-			return nil, errors.Wrap(err, "Could not parse transaction partial fee")
+		fee, err := getTransactionFee(currency, t.PartialFee, t.Tip)
+		if err != nil {
+			return nil, err
 		}
-
-		fee := []structs.TransactionAmount{{
-			Text:     t.PartialFee,
-			Currency: currency,
-			Numeric:  feeInt,
-			Exp:      0,
-		}}
 
 		transactions = append(transactions, &structs.Transaction{
 			Hash:      t.Hash,
@@ -113,6 +105,28 @@ func parseTime(timeStr string) (*time.Time, error) {
 
 	time := time.Unix(int64(timeInt), 0)
 	return &time, nil
+}
+
+func getTransactionFee(currency, partialFeeStr, tipStr string) ([]structs.TransactionAmount, error) {
+	var ok bool
+	var fee, tip *big.Int
+
+	if fee, ok = new(big.Int).SetString(partialFeeStr, 10); !ok {
+		return nil, errors.New("Could not parse transaction partial fee")
+	}
+
+	if tip, ok = new(big.Int).SetString(tipStr, 10); !ok {
+		return nil, errors.New("Could not parse transaction tip")
+	}
+
+	amount := new(big.Int).Add(fee, tip)
+
+	return []structs.TransactionAmount{{
+		Text:     amount.String(),
+		Currency: currency,
+		Numeric:  amount,
+		Exp:      0,
+	}}, nil
 }
 
 type eventMap map[int64][]structs.TransactionEvent
@@ -185,7 +199,7 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 		}
 
 		appendDispatchInfo(ev.dispatchInfo)
-		appendDispatchError(ev.dispatchError, eventError, &eventType, &kind, &module, ev.msg)
+		appendDispatchError(ev.dispatchError, eventError, &eventType, &kind, &module)
 
 		appendAccount(ev.accountID, &accounts)
 		amount := getAmount(ev.value, currency)
@@ -200,6 +214,7 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 		}
 
 		if ev.attributes != nil {
+			sub.Additional = make(map[string][]string)
 			sub.Additional["attributes"] = *ev.attributes
 		}
 
@@ -210,6 +225,7 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 		}
 
 		if eventError != nil {
+			fmt.Println("appending error: ", eventError.Message)
 			sub.Error = eventError
 		}
 
@@ -242,7 +258,6 @@ type eventValues struct {
 	accountID          *string
 	recipientAccountID *string
 	senderAccountID    *string
-	msg                *string
 	value              *string
 
 	attributes    *[]string
@@ -254,8 +269,7 @@ func getEventValues(log *zap.SugaredLogger, event *eventpb.Event) (ev eventValue
 	dataLen := len(event.Data)
 	attributes := make([]string, dataLen)
 
-	values, msg := getValues(event.Description)
-	ev.msg = &msg
+	values := getValues(event.Description)
 
 	for i, v := range values {
 		if i >= dataLen {
@@ -293,17 +307,7 @@ func getEventValues(log *zap.SugaredLogger, event *eventpb.Event) (ev eventValue
 	return
 }
 
-func getValues(description string) ([]string, string) {
-	desc := description[2 : len(description)-1]
-	descSlice := strings.Split(desc, `\[`)
-
-	msg := descSlice[0]
-
-	descSlice2 := strings.Split(descSlice[1], `\]`)
-	if !strings.Contains(descSlice[0], ",") && len(descSlice2[1]) > 0 && descSlice2[1][len(descSlice2[1])-1:] != "]" {
-		msg += descSlice2[0] + descSlice2[1]
-	}
-
+func getValues(description string) []string {
 	vls := string(regexp.MustCompile(`\\\[.*\\\]`).Find([]byte(description)))
 	vls = vls[2 : len(vls)-2]
 
@@ -312,7 +316,7 @@ func getValues(description string) ([]string, string) {
 		values[i] = strings.TrimSpace(v)
 	}
 
-	return values, desc
+	return values
 }
 
 func getValue(data *eventpb.EventData, expected string) *string {
@@ -430,16 +434,38 @@ func appendDispatchInfo(dispatchInfo *dispatchInfo) {
 	}
 }
 
-func appendDispatchError(dispatchError *dispatchError, err *structs.SubsetEventError, eventType *[]string, kind, module, msg *string) {
+func appendDispatchError(dispatchError *dispatchError, err *structs.SubsetEventError, eventType *[]string, kind, module *string) {
 	if dispatchError == nil {
 		return
 	}
 
 	*kind = "error"
 	*eventType = []string{"error"}
+	*module = "codeexit?"
 
-	err = &structs.SubsetEventError{
-		Message: *msg,
+	// newErr :=
+
+	*err = structs.SubsetEventError{
+		Message: getErrorMsg(dispatchError.module.index, dispatchError.module.err),
+	}
+}
+
+func getErrorMsg(index, err float64) string {
+	fmt.Println("mapping error: ", index, err)
+	switch index {
+	case 5:
+		return getBalanceErrorMsg(err)
+	default:
+		return getBalanceErrorMsg(0)
+	}
+}
+
+func getBalanceErrorMsg(err float64) string {
+	switch err {
+	case 4:
+		return "Value too low to create account due to existential deposit"
+	default:
+		return "default"
 	}
 }
 
