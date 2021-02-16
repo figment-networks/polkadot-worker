@@ -147,8 +147,8 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		events,
 		transactions,
 		cfg.Worker.ChainID,
-		cfg.Worker.Version,
 		cfg.Worker.Currency,
+		cfg.Worker.Version,
 	)
 	if err != nil {
 		log.Error("Error mapping transaction", zap.Error(err))

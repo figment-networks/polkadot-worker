@@ -184,53 +184,34 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 		fmt.Println("phase: ", e.Phase, " method: ", e.Method, " description: ", e.Description)
 
 		var sub structs.SubsetEvent
-		var eventError *structs.SubsetEventError
 		var kind, module string
 		var eventType []string
 		subs := make([]structs.SubsetEvent, 0)
-		node := make(map[string][]structs.Account)
-
 		accounts := make([]structs.Account, 0)
-		transferMap := make(map[string][]structs.EventTransfer)
 
-		ev, err := getEventValues(log, e)
+		ev, err := getEventValues(log, e, &sub)
 		if err != nil {
 			return nil, err
 		}
 
-		appendDispatchInfo(ev.dispatchInfo)
-		appendDispatchError(ev.dispatchError, eventError, &eventType, &kind, &module)
-
 		appendAccount(ev.accountID, &accounts)
-		amount := getAmount(ev.value, currency)
-		appendSender(ev.accountID, &accounts, &amount, &sub.Sender)
-		appendRecipient(ev.accountID, &accounts, &amount, &sub.Recipient, transferMap)
+		appendDispatchError(ev.dispatchError, &sub, &eventType, &kind, &module)
+		amount := getAmount(currency, ev.value)
+		appendSender(ev.senderAccountID, &accounts, &amount, &sub)
+		appendRecipient(ev.recipientAccountID, &accounts, &amount, &sub)
 
 		sub.Module = e.Section
 
 		if len(accounts) > 0 {
+			node := make(map[string][]structs.Account)
 			node["versions"] = accounts
 			sub.Node = node
-		}
-
-		if ev.attributes != nil {
-			sub.Additional = make(map[string][]string)
-			sub.Additional["attributes"] = *ev.attributes
 		}
 
 		if eventType != nil {
 			sub.Type = eventType
 		} else {
 			sub.Type = []string{e.Method}
-		}
-
-		if eventError != nil {
-			fmt.Println("appending error: ", eventError.Message)
-			sub.Error = eventError
-		}
-
-		if len(transferMap) > 0 {
-			sub.Transfers = transferMap
 		}
 
 		subs = append(subs, sub)
@@ -259,16 +240,12 @@ type eventValues struct {
 	recipientAccountID *string
 	senderAccountID    *string
 	value              *string
-
-	attributes    *[]string
-	dispatchInfo  *dispatchInfo
-	dispatchError *dispatchError
+	dispatchError      *dispatchError
 }
 
-func getEventValues(log *zap.SugaredLogger, event *eventpb.Event) (ev eventValues, err error) {
+func getEventValues(log *zap.SugaredLogger, event *eventpb.Event, sub *structs.SubsetEvent) (ev eventValues, err error) {
 	dataLen := len(event.Data)
 	attributes := make([]string, dataLen)
-
 	values := getValues(event.Description)
 
 	for i, v := range values {
@@ -288,10 +265,7 @@ func getEventValues(log *zap.SugaredLogger, event *eventpb.Event) (ev eventValue
 		case "from":
 			ev.senderAccountID = getAccountID(event.Data[i])
 		case "info":
-			ev.dispatchInfo, err = getDispatchInfo(event.Data[i])
-			if err != nil {
-				return eventValues{}, err
-			}
+			break
 		case "to", "who":
 			ev.recipientAccountID = getAccountID(event.Data[i])
 		case "deposit", "free_balance", "value":
@@ -300,10 +274,14 @@ func getEventValues(log *zap.SugaredLogger, event *eventpb.Event) (ev eventValue
 			log.Error("Unknown value to parse event", zap.String("event_value", v))
 		}
 
-		attributes[i] = v
+		attributes[i] = fmt.Sprintf("%v", event.Data[i])
 	}
 
-	ev.attributes = &attributes
+	if dataLen > 0 {
+		sub.Additional = make(map[string][]string)
+		sub.Additional["attributes"] = attributes
+	}
+
 	return
 }
 
@@ -335,45 +313,6 @@ func getBalance(data *eventpb.EventData) *string {
 	return getValue(data, "Balance")
 }
 
-type dispatchInfo struct {
-	weight  float64
-	class   string
-	paysFee string
-}
-
-func getDispatchInfo(data *eventpb.EventData) (*dispatchInfo, error) {
-	var result map[string]interface{}
-
-	value := getValue(data, "DispatchInfo")
-
-	if err := json.Unmarshal([]byte(*value), &result); err != nil {
-		return nil, errors.Wrap(err, "Could not unmarshall dispatch info")
-	}
-
-	weight, ok := result["weight"]
-	if !ok {
-		return nil, errors.New(fmt.Sprintf("Could not parse weight from %q", *value))
-	}
-
-	class, ok := result["class"]
-	if !ok {
-		return nil, errors.New(fmt.Sprintf("Could not parse class from %q", *value))
-	}
-
-	paysFee, ok := result["paysFee"]
-	if !ok {
-		return nil, errors.New(fmt.Sprintf("Could not parse paysFee from %q", *value))
-	}
-
-	fmt.Println(" weight class paysFee: ", weight, class, paysFee)
-
-	return &dispatchInfo{
-		weight:  weight.(float64),
-		class:   class.(string),
-		paysFee: paysFee.(string),
-	}, nil
-}
-
 type dispatchError struct {
 	module module
 }
@@ -389,7 +328,7 @@ func getDispatchError(data *eventpb.EventData) (*dispatchError, error) {
 	value := getValue(data, "DispatchError")
 
 	if err := json.Unmarshal([]byte(*value), &result); err != nil {
-		return nil, errors.Wrap(err, "Could not unmarshall dispatch info")
+		return nil, errors.Wrap(err, "Could not unmarshal dispatch info")
 	}
 
 	errModule, ok := result["Module"]
@@ -428,48 +367,21 @@ func appendAccount(accountID *string, accounts *[]structs.Account) {
 	*accounts = append(*accounts, account)
 }
 
-func appendDispatchInfo(dispatchInfo *dispatchInfo) {
-	if dispatchInfo == nil {
-		return
-	}
-}
-
-func appendDispatchError(dispatchError *dispatchError, err *structs.SubsetEventError, eventType *[]string, kind, module *string) {
+func appendDispatchError(dispatchError *dispatchError, sub *structs.SubsetEvent, eventType *[]string, kind, module *string) {
 	if dispatchError == nil {
 		return
 	}
 
 	*kind = "error"
 	*eventType = []string{"error"}
-	*module = "codeexit?"
+	*module = strconv.Itoa(int(dispatchError.module.index))
 
-	// newErr :=
-
-	*err = structs.SubsetEventError{
+	sub.Error = &structs.SubsetEventError{
 		Message: getErrorMsg(dispatchError.module.index, dispatchError.module.err),
 	}
 }
 
-func getErrorMsg(index, err float64) string {
-	fmt.Println("mapping error: ", index, err)
-	switch index {
-	case 5:
-		return getBalanceErrorMsg(err)
-	default:
-		return getBalanceErrorMsg(0)
-	}
-}
-
-func getBalanceErrorMsg(err float64) string {
-	switch err {
-	case 4:
-		return "Value too low to create account due to existential deposit"
-	default:
-		return "default"
-	}
-}
-
-func getAmount(value *string, currency string) []structs.TransactionAmount {
+func getAmount(currency string, value *string) []structs.TransactionAmount {
 	if value == nil {
 		return nil
 	}
@@ -490,7 +402,7 @@ func getAmount(value *string, currency string) []structs.TransactionAmount {
 	return []structs.TransactionAmount{trAmount}
 }
 
-func appendSender(accountID *string, accounts *[]structs.Account, amount *[]structs.TransactionAmount, sender *[]structs.EventTransfer) {
+func appendSender(accountID *string, accounts *[]structs.Account, amount *[]structs.TransactionAmount, sub *structs.SubsetEvent) {
 	if accountID == nil {
 		return
 	}
@@ -504,14 +416,14 @@ func appendSender(accountID *string, accounts *[]structs.Account, amount *[]stru
 		Amounts: *amount,
 	}
 
-	*sender = []structs.EventTransfer{
+	sub.Sender = []structs.EventTransfer{
 		eventTransfer,
 	}
 
 	*accounts = append(*accounts, account)
 }
 
-func appendRecipient(accountID *string, accounts *[]structs.Account, amount *[]structs.TransactionAmount, recipient *[]structs.EventTransfer, transferMap map[string][]structs.EventTransfer) {
+func appendRecipient(accountID *string, accounts *[]structs.Account, amount *[]structs.TransactionAmount, sub *structs.SubsetEvent) {
 	if accountID == nil {
 		return
 	}
@@ -525,10 +437,14 @@ func appendRecipient(accountID *string, accounts *[]structs.Account, amount *[]s
 		Amounts: *amount,
 	}
 
-	*recipient = []structs.EventTransfer{
+	sub.Recipient = []structs.EventTransfer{
 		eventTransfer,
 	}
 
 	*accounts = append(*accounts, account)
-	transferMap[*accountID] = []structs.EventTransfer{eventTransfer}
+
+	fmt.Println("transfer should be appended here")
+	transfers := make(map[string][]structs.EventTransfer)
+	transfers[*accountID] = []structs.EventTransfer{eventTransfer}
+	sub.Transfers = transfers
 }
