@@ -197,8 +197,8 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 		appendAccount(ev.accountID, &accounts)
 		appendDispatchError(ev.dispatchError, &sub, &eventType, &kind, &module)
 		amount := getAmount(currency, ev.value)
-		appendSender(ev.senderAccountID, &accounts, &amount, &sub)
-		appendRecipient(ev.recipientAccountID, &accounts, &amount, &sub)
+		appendSender(ev.senderAccountID, &accounts, amount, &sub)
+		appendRecipient(ev.recipientAccountID, &accounts, amount, &sub)
 
 		sub.Module = e.Section
 
@@ -206,6 +206,11 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 			node := make(map[string][]structs.Account)
 			node["versions"] = accounts
 			sub.Node = node
+		}
+
+		if amount != nil {
+			sub.Amount = make(map[string]structs.TransactionAmount)
+			sub.Amount["0"] = *amount
 		}
 
 		if eventType != nil {
@@ -381,7 +386,7 @@ func appendDispatchError(dispatchError *dispatchError, sub *structs.SubsetEvent,
 	}
 }
 
-func getAmount(currency string, value *string) []structs.TransactionAmount {
+func getAmount(currency string, value *string) *structs.TransactionAmount {
 	if value == nil {
 		return nil
 	}
@@ -392,17 +397,15 @@ func getAmount(currency string, value *string) []structs.TransactionAmount {
 		fmt.Println("could not create big int from value ", value)
 	}
 
-	trAmount := structs.TransactionAmount{
+	return &structs.TransactionAmount{
 		Text:     *value,
 		Currency: currency,
 		Numeric:  n,
 		Exp:      0,
 	}
-
-	return []structs.TransactionAmount{trAmount}
 }
 
-func appendSender(accountID *string, accounts *[]structs.Account, amount *[]structs.TransactionAmount, sub *structs.SubsetEvent) {
+func appendSender(accountID *string, accounts *[]structs.Account, amount *structs.TransactionAmount, sub *structs.SubsetEvent) {
 	if accountID == nil {
 		return
 	}
@@ -413,7 +416,7 @@ func appendSender(accountID *string, accounts *[]structs.Account, amount *[]stru
 
 	eventTransfer := structs.EventTransfer{
 		Account: account,
-		Amounts: *amount,
+		Amounts: []structs.TransactionAmount{*amount},
 	}
 
 	sub.Sender = []structs.EventTransfer{
@@ -423,7 +426,7 @@ func appendSender(accountID *string, accounts *[]structs.Account, amount *[]stru
 	*accounts = append(*accounts, account)
 }
 
-func appendRecipient(accountID *string, accounts *[]structs.Account, amount *[]structs.TransactionAmount, sub *structs.SubsetEvent) {
+func appendRecipient(accountID *string, accounts *[]structs.Account, amount *structs.TransactionAmount, sub *structs.SubsetEvent) {
 	if accountID == nil {
 		return
 	}
@@ -434,7 +437,7 @@ func appendRecipient(accountID *string, accounts *[]structs.Account, amount *[]s
 
 	eventTransfer := structs.EventTransfer{
 		Account: account,
-		Amounts: *amount,
+		Amounts: []structs.TransactionAmount{*amount},
 	}
 
 	sub.Recipient = []structs.EventTransfer{
