@@ -141,8 +141,9 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		return nil, nil
 	}
 
-	result, err := mapper.TransactionMapper(
-		log,
+	tm := mapper.New(log)
+
+	result, err := tm.Parse(
 		block,
 		events,
 		transactions,

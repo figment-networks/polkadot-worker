@@ -21,17 +21,31 @@ import (
 	"go.uber.org/zap"
 )
 
-type eventType string
-
-var (
-	accountIDEvent     eventType = "AccountId"
-	balanceEvent       eventType = "Balance"
-	dispatchInfoEvent  eventType = "DispatchInfo"
-	dispatchErrorEvent eventType = "DispatchError"
+const (
+	exp          = 10
+	maxPrecision = 12
 )
 
-// TransactionMapper maps Block and Transaction response into database Transcation struct
-func TransactionMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse,
+// TransactionMapper maps Transaction into database struct
+type TransactionMapper struct {
+	expMultipliers []*big.Int
+	log            *zap.SugaredLogger
+}
+
+// New creates a new TransactionMapper
+func New(log *zap.SugaredLogger) *TransactionMapper {
+	tm := TransactionMapper{
+		log: log,
+	}
+	tm.expMultipliers = make([]*big.Int, maxPrecision+1)
+	for i := 0; i < maxPrecision; i++ {
+		tm.expMultipliers[i] = new(big.Int).Exp(big.NewInt(10), big.NewInt(maxPrecision), nil)
+	}
+	return &tm
+}
+
+// Parse maps Block and Transaction response into database Transcation struct
+func (m *TransactionMapper) Parse(blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse,
 	transactionRes *transactionpb.GetByHeightResponse, chainID, currency, version string) ([]*structs.Transaction, error) {
 	timer := metrics.NewTimer(proxy.TransactionConversionDuration)
 	defer timer.ObserveDuration()
@@ -44,23 +58,23 @@ func TransactionMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResp
 	height := blockRes.Block.Header.Height
 	transactionMap := make(map[string]struct{})
 
-	allEvents, err := parseEvents(log, eventRes, currency, height)
+	allEvents, err := m.parseEvents(eventRes, currency, height)
 	if err != nil {
 		return nil, err
 	}
 
 	var transactions []*structs.Transaction
 	for _, t := range transactionRes.Transactions {
-		if !isTransactionUnique(transactionMap, t.Hash) {
+		if !m.isTransactionUnique(transactionMap, t.Hash) {
 			continue
 		}
 
-		time, err := parseTime(t.Time)
+		time, err := m.parseTime(t.Time)
 		if err != nil {
 			return nil, err
 		}
 
-		fee, err := getTransactionFee(currency, t.PartialFee, t.Tip)
+		fee, err := m.getTransactionFee(currency, t.PartialFee, t.Tip)
 		if err != nil {
 			return nil, err
 		}
@@ -86,7 +100,7 @@ func TransactionMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResp
 	return transactions, nil
 }
 
-func isTransactionUnique(transactionMap map[string]struct{}, hash string) bool {
+func (m *TransactionMapper) isTransactionUnique(transactionMap map[string]struct{}, hash string) bool {
 	if _, ok := transactionMap[hash]; !ok {
 		transactionMap[hash] = struct{}{}
 		return true
@@ -95,7 +109,7 @@ func isTransactionUnique(transactionMap map[string]struct{}, hash string) bool {
 	return false
 }
 
-func parseTime(timeStr string) (*time.Time, error) {
+func (m *TransactionMapper) parseTime(timeStr string) (*time.Time, error) {
 	timeInt, err := strconv.Atoi(timeStr)
 	if err != nil {
 		return nil, errors.Wrap(err, "Could not parse transaction time")
@@ -105,7 +119,7 @@ func parseTime(timeStr string) (*time.Time, error) {
 	return &time, nil
 }
 
-func getTransactionFee(currency, partialFeeStr, tipStr string) ([]structs.TransactionAmount, error) {
+func (m *TransactionMapper) getTransactionFee(currency, partialFeeStr, tipStr string) ([]structs.TransactionAmount, error) {
 	var ok bool
 	var fee, tip *big.Int
 
@@ -119,11 +133,16 @@ func getTransactionFee(currency, partialFeeStr, tipStr string) ([]structs.Transa
 
 	amount := new(big.Int).Add(fee, tip)
 
+	textAmount, err := m.countCurrencyAmount(amount.String())
+	if err != nil {
+		return nil, errors.New("Could not count currency amount")
+	}
+
 	return []structs.TransactionAmount{{
-		Text:     amount.String(),
+		Text:     fmt.Sprintf("%s%s", textAmount.Text('f', -1), currency),
 		Currency: currency,
 		Numeric:  amount,
-		Exp:      0,
+		Exp:      exp,
 	}}, nil
 }
 
@@ -164,13 +183,13 @@ func subWithNonceAndTime(subs *[]structs.SubsetEvent, nonce string, time *time.T
 	return events
 }
 
-func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, currency string, height int64) (eventMap, error) {
+func (m *TransactionMapper) parseEvents(eventRes *eventpb.GetByHeightResponse, currency string, height int64) (eventMap, error) {
 	evIndexMap := make(map[int64]struct{})
 	trIndexMap := make(map[int64]struct{})
 
 	events := make(map[int64][]structs.TransactionEvent)
 	for _, e := range eventRes.Events {
-		if !isEventUnique(evIndexMap, e.Index) {
+		if !m.isEventUnique(evIndexMap, e.Index) {
 			continue
 		}
 
@@ -185,7 +204,7 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 		subs := make([]structs.SubsetEvent, 0)
 		accounts := make([]structs.Account, 0)
 
-		ev, err := getEventValues(log, e, &sub)
+		ev, err := m.getEventValues(e, &sub)
 		if err != nil {
 			return nil, err
 		}
@@ -193,7 +212,7 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 		appendAccount(ev.accountID, &accounts)
 		appendDispatchError(ev.dispatchError, &sub, &eventType, &kind, &module)
 
-		amount, err := getAmount(height, currency, ev.value)
+		amount, err := m.getAmount(height, currency, ev.value)
 		if err != nil {
 			return nil, err
 		}
@@ -233,7 +252,7 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 	return events, nil
 }
 
-func isEventUnique(evIndexMap map[int64]struct{}, evIdx int64) bool {
+func (m *TransactionMapper) isEventUnique(evIndexMap map[int64]struct{}, evIdx int64) bool {
 	if _, ok := evIndexMap[evIdx]; !ok {
 		evIndexMap[evIdx] = struct{}{}
 		return true
@@ -249,10 +268,14 @@ type eventValues struct {
 	dispatchError      *dispatchError
 }
 
-func getEventValues(log *zap.SugaredLogger, event *eventpb.Event, sub *structs.SubsetEvent) (ev eventValues, err error) {
+func (m *TransactionMapper) getEventValues(event *eventpb.Event, sub *structs.SubsetEvent) (ev eventValues, err error) {
 	dataLen := len(event.Data)
 	attributes := make([]string, dataLen)
-	values := getValues(event.Description)
+
+	values, err := m.getValues(event.Description)
+	if err != nil {
+		return eventValues{}, err
+	}
 
 	for i, v := range values {
 		if i >= dataLen {
@@ -272,7 +295,7 @@ func getEventValues(log *zap.SugaredLogger, event *eventpb.Event, sub *structs.S
 		case "deposit", "free_balance", "value":
 			ev.value, err = getBalance(event.Data[i])
 		default:
-			log.Error("Unknown value to parse event", zap.String("event_value", v))
+			m.log.Error("Unknown value to parse event", zap.String("event_value", v))
 		}
 
 		if err != nil {
@@ -290,8 +313,11 @@ func getEventValues(log *zap.SugaredLogger, event *eventpb.Event, sub *structs.S
 	return
 }
 
-func getValues(description string) []string {
+func (m *TransactionMapper) getValues(description string) ([]string, error) {
 	vls := string(regexp.MustCompile(`\\\[.*\\\]`).Find([]byte(description)))
+	if len(vls) < 5 {
+		return nil, fmt.Errorf("Could not get values from description %q", description)
+	}
 	vls = vls[2 : len(vls)-2]
 
 	values := strings.Split(vls, ",")
@@ -299,7 +325,7 @@ func getValues(description string) []string {
 		values[i] = strings.TrimSpace(v)
 	}
 
-	return values
+	return values, nil
 }
 
 func getValue(data *eventpb.EventData, expected string) (*string, error) {
@@ -387,14 +413,9 @@ func appendDispatchError(dispatchError *dispatchError, sub *structs.SubsetEvent,
 	}
 }
 
-func getAmount(height int64, currency string, value *string) (*structs.TransactionAmount, error) {
+func (m *TransactionMapper) getAmount(height int64, currency string, value *string) (*structs.TransactionAmount, error) {
 	if value == nil {
 		return nil, nil
-	}
-
-	exp := 12
-	if height < 1248328 {
-		exp = 10
 	}
 
 	n := new(big.Int)
@@ -403,26 +424,26 @@ func getAmount(height int64, currency string, value *string) (*structs.Transacti
 		return nil, fmt.Errorf("Could not create big int from value %s", *value)
 	}
 
-	amount, err := countCurrencyAmount(int64(exp), *value)
+	amount, err := m.countCurrencyAmount(*value)
 	if err != nil {
 		return nil, errors.New("Could not count currency amount")
 	}
 
 	return &structs.TransactionAmount{
-		Text:     fmt.Sprintf("%s%s", amount.String(), currency),
+		Text:     fmt.Sprintf("%s%s", amount.Text('f', -1), currency),
 		Currency: currency,
 		Numeric:  n,
 		Exp:      int32(exp),
 	}, nil
 }
 
-func countCurrencyAmount(exp int64, value string) (*big.Float, error) {
-	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(exp), nil)
+func (m *TransactionMapper) countCurrencyAmount(value string) (*big.Float, error) {
+	div := m.expMultipliers[exp]
 
 	amount := new(big.Float)
 	amount, ok := amount.SetString(value)
 	if !ok {
-		fmt.Println("Could not create big float from value ", amount.String())
+		return nil, fmt.Errorf("Could not create big float from value %s", value)
 	}
 
 	return new(big.Float).Quo(amount, new(big.Float).SetFloat64(float64(div.Int64()))), nil
