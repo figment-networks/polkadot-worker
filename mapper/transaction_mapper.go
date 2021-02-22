@@ -288,6 +288,8 @@ func (m *TransactionMapper) getEventValues(event *eventpb.Event, sub *structs.Su
 			ev.accountID, err = getAccountID(event.Data[i])
 		case "error":
 			ev.dispatchError, err = getDispatchError(event.Data[i])
+		case "info":
+			continue
 		case "from":
 			ev.senderAccountID, err = getAccountID(event.Data[i])
 		case "to", "who":

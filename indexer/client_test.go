@@ -739,7 +739,7 @@ func (ic *IndexerClientTest) validateTransaction(transaction structs.Transaction
 	ic.Require().Equal(strconv.Itoa(int(time.Unix())), transaction.Epoch)
 	ic.Require().Equal(chainID, transaction.ChainID)
 	ic.Require().Equal(fee, transaction.Fee[0].Text)
-	// ic.Require().Equal(time.Unix(), transaction.Time.Unix())
+	ic.Require().Equal(time.Unix(), transaction.Time.Unix())
 	ic.Require().Equal("0.0.1", transaction.Version)
 	ic.Require().Equal(!isSuccess, transaction.HasErrors)
 

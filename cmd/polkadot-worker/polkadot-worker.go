@@ -134,12 +134,14 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		log.Error("Error while getting transactions", zap.Error(err))
 		return nil, nil
 	}
+	fmt.Println("transactions: ", transactions)
 
 	events, err := proxyClient.GetEventsByHeight(ctx, height)
 	if err != nil {
 		log.Error("Error while getting events", zap.Error(err))
 		return nil, nil
 	}
+	fmt.Println("events: ", events)
 
 	tm := mapper.New(log)
 
