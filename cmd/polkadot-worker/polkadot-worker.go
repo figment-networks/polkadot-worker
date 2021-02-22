@@ -141,21 +141,15 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		return nil, nil
 	}
 
-	validators, err := proxyClient.GetValidatorsByHeight(ctx, height)
-	if err != nil {
-		log.Error("Error while getting events", zap.Error(err))
-		return nil, nil
-	}
-	fmt.Printf("vxalidators:\n%3v\n", validators)
+	tm := mapper.New(log)
 
-	result, err := mapper.TransactionMapper(
-		log,
+	result, err := tm.Parse(
 		block,
 		events,
 		transactions,
 		cfg.Worker.ChainID,
-		cfg.Worker.Version,
 		cfg.Worker.Currency,
+		cfg.Worker.Version,
 	)
 	if err != nil {
 		log.Error("Error mapping transaction", zap.Error(err))
@@ -164,6 +158,13 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 	for i, r := range result {
 		fmt.Println("height:", r.Height)
 		fmt.Printf("result %i:\n\n%3v\n\n%#v\n\n", i, r, r)
+		for _, ee := range r.Events {
+			for _, e := range ee.Sub {
+				if e.Error != nil {
+					fmt.Println("errormsg: ", e.Error.Message)
+				}
+			}
+		}
 	}
 
 	return indexer.NewClient(

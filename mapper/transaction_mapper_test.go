@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/proxy"
 	"github.com/figment-networks/polkadot-worker/utils"
+	"go.uber.org/zap"
 
+	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
@@ -17,11 +18,12 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-type TransactionMapTest struct {
+type TransactionMapperTest struct {
 	suite.Suite
 
 	BlockHash              string
 	ChainID                string
+	Currency               string
 	EvIds                  [][2]int64
 	Fee1, Fee2             string
 	Height                 int64
@@ -34,10 +36,14 @@ type TransactionMapTest struct {
 	BlockRes       *blockpb.GetByHeightResponse
 	EventRes       *eventpb.GetByHeightResponse
 	TransactionRes *transactionpb.GetByHeightResponse
+
+	Log               *zap.SugaredLogger
+	TransactionMapper *mapper.TransactionMapper
 }
 
-func (tm *TransactionMapTest) SetupTest() {
+func (tm *TransactionMapperTest) SetupTest() {
 	tm.ChainID = "chainID"
+	tm.Currency = "DOT"
 	tm.Version = "0.0.1"
 	tm.BlockHash = "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf"
 	tm.Height = int64(120)
@@ -62,29 +68,36 @@ func (tm *TransactionMapTest) SetupTest() {
 
 	conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
 	proxy.TransactionConversionDuration = conversionDuration.WithLabels("transaction")
+
+	log, err := zap.NewDevelopment()
+	tm.Require().Nil(err)
+
+	tm.Log = log.Sugar()
+
+	tm.TransactionMapper = mapper.New(tm.Log)
 }
 
-func (tm *TransactionMapTest) TestTransactionMap_EmptyResponse() {
-	transaction, err := mapper.TransactionMapper(nil, tm.EventRes, tm.TransactionRes, tm.ChainID, tm.Version)
+func (tm *TransactionMapperTest) TestTransactionMapper_EmptyResponse() {
+	transaction, err := tm.TransactionMapper.Parse(nil, tm.EventRes, tm.TransactionRes, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(transaction)
 	tm.Require().Nil(err)
 
-	transaction, err = mapper.TransactionMapper(tm.BlockRes, nil, tm.TransactionRes, tm.ChainID, tm.Version)
+	transaction, err = tm.TransactionMapper.Parse(tm.BlockRes, nil, tm.TransactionRes, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(transaction)
 	tm.Require().Nil(err)
 
-	transaction, err = mapper.TransactionMapper(tm.BlockRes, tm.EventRes, nil, tm.ChainID, tm.Version)
+	transaction, err = tm.TransactionMapper.Parse(tm.BlockRes, tm.EventRes, nil, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(transaction)
 	tm.Require().Nil(err)
 }
 
-func (tm *TransactionMapTest) TestTransactionMap_TimeParsingError() {
+func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
 	tm.TransactionRes.Transactions[0].Time = "[object Object]"
 
-	transaction, err := mapper.TransactionMapper(tm.BlockRes, tm.EventRes, tm.TransactionRes, tm.ChainID, tm.Version)
+	transaction, err := tm.TransactionMapper.Parse(tm.BlockRes, tm.EventRes, tm.TransactionRes, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(transaction)
 
@@ -92,8 +105,8 @@ func (tm *TransactionMapTest) TestTransactionMap_TimeParsingError() {
 	tm.Require().Contains(err.Error(), "Could not parse transaction time: strconv.Atoi: parsing \"[object Object]\": invalid syntax")
 }
 
-func (tm *TransactionMapTest) TestTransactionMap_OK() {
-	transaction, err := mapper.TransactionMapper(tm.BlockRes, tm.EventRes, tm.TransactionRes, tm.ChainID, tm.Version)
+func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
+	transaction, err := tm.TransactionMapper.Parse(tm.BlockRes, tm.EventRes, tm.TransactionRes, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(err)
 
@@ -124,6 +137,6 @@ func (tm *TransactionMapTest) TestTransactionMap_OK() {
 	tm.Require().Equal(!tm.IsSuccess2, transaction[1].HasErrors)
 }
 
-func TestTransactionMap(t *testing.T) {
-	suite.Run(t, new(TransactionMapTest))
+func TestTransactionMapper(t *testing.T) {
+	suite.Run(t, new(TransactionMapperTest))
 }

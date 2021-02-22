@@ -38,6 +38,7 @@ type Client struct {
 
 	log   *zap.SugaredLogger
 	proxy proxy.ClientIface
+	tm    *mapper.TransactionMapper
 
 	sLock   sync.Mutex
 	streams map[uuid.UUID]*cStructs.StreamAccess
@@ -55,6 +56,7 @@ func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, page uint64, cha
 		version:  version,
 		log:      log,
 		proxy:    proxy,
+		tm:       mapper.New(log),
 		streams:  make(map[uuid.UUID]*cStructs.StreamAccess),
 	}
 }
@@ -421,8 +423,7 @@ func (c *Client) getTransactions(ctx context.Context, out chan cStructs.OutResp,
 		return nil
 	}
 
-	if transactionMapped, e = mapper.TransactionMapper(
-		c.log,
+	if transactionMapped, e = c.tm.Parse(
 		block,
 		events,
 		transactions,

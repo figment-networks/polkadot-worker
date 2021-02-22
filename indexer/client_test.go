@@ -39,6 +39,7 @@ type IndexerClientTest struct {
 
 	*indexer.Client
 
+	Currency    string
 	ProxyClient *proxyClientMock
 }
 
@@ -54,7 +55,9 @@ func (ic *IndexerClientTest) SetupTest() {
 
 	proxyClientMock := proxyClientMock{}
 
-	ic.Client = indexer.NewClient(log.Sugar(), &proxyClientMock, page, chainID, version)
+	ic.Currency = "DOT"
+
+	ic.Client = indexer.NewClient(log.Sugar(), &proxyClientMock, page, chainID, ic.Currency, version)
 	ic.ProxyClient = &proxyClientMock
 }
 
