@@ -84,13 +84,11 @@ func TransactionResponse(index, nonce int64, isSuccess bool, args, fee, hash, me
 	}
 }
 
-func ValidateTransaction(sut *suite.Suite, transaction structs.Transaction, time time.Time, ev []EventValues, height uint64, isSuccess bool, blockHash, chainID, currency, epoch, trHash, fee, feeTxt string) {
+func ValidateTransaction(sut *suite.Suite, transaction structs.Transaction, time time.Time, ev []EventValues, additional []string, exp int, height uint64, isSuccess bool, blockHash, chainID, currency, trHash, fee, feeTxt string) {
 	sut.Require().Equal(height, transaction.Height)
 	sut.Require().Equal(blockHash, transaction.BlockHash)
 	sut.Require().Equal(trHash, transaction.Hash)
-	sut.Require().Equal(strconv.Itoa(int(time.Unix())), transaction.Epoch)
 	sut.Require().Equal(chainID, transaction.ChainID)
-	sut.Require().Equal(epoch, transaction.Epoch)
 	sut.Require().Equal(time.Unix(), transaction.Time.Unix())
 	sut.Require().Equal("0.0.1", transaction.Version)
 	sut.Require().Equal(!isSuccess, transaction.HasErrors)
@@ -100,20 +98,25 @@ func ValidateTransaction(sut *suite.Suite, transaction structs.Transaction, time
 	sut.Require().Equal(feeNumeric, transaction.Fee[0].Numeric)
 	sut.Require().Equal(feeTxt, transaction.Fee[0].Text)
 	sut.Require().Equal(currency, transaction.Fee[0].Currency)
-	sut.Require().Equal(10, transaction.Fee[0].Exp)
+	sut.Require().EqualValues(exp, transaction.Fee[0].Exp)
 
 	sut.Require().Len(transaction.Events, len(ev))
 	for i, e := range ev {
-		sut.Require().Equal(e.Index, transaction.Events[i].ID)
+		sut.Require().Equal(strconv.Itoa(int(e.Index)), transaction.Events[i].ID)
 		// sub.Require().Equal(kind, transaction.Events[i].Kind)
 		// sub.Require().Equal(action, transaction.Events[i].Sub[0].Action)
 
 		expectedType := e.Method
-		if transaction.Events[i].Kind == "error" {
-			expectedType = "error"
+		for _, d := range e.EventData {
+			if d.Name == "DispatchError" {
+				expectedType = "error"
+			}
 		}
-		sut.Require().Equal([]string{expectedType}, transaction.Events[i].Sub[0].Type)
-		sut.Require().Equal(e.Section, transaction.Events[i].Sub[0].Module)
 
+		event := transaction.Events[i].Sub[0]
+		sut.Require().Equal(e.Section, event.Module)
+		sut.Require().Equal([]string{expectedType}, event.Type)
+		sut.Require().Equal(time.Unix(), event.Completion.Unix())
+		sut.Require().EqualValues(additional, event.Additional["attributes"])
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -60,7 +61,10 @@ func main() {
 }
 
 func getConfig() (cfg config.Config) {
-	file, err := ioutil.ReadFile("./../../config.json")
+	fptr := flag.String("config", "config.json", "path to config.json file")
+	flag.Parse()
+
+	file, err := ioutil.ReadFile(*fptr)
 	if err != nil {
 		fmt.Printf("Error while getting config file: %s\n", err.Error())
 		os.Exit(1)
@@ -85,11 +89,14 @@ func getLogger(logLevel string) (*zap.SugaredLogger, func() error) {
 		Level:       lvl,
 		OutputPaths: []string{"stderr"},
 		EncoderConfig: zapcore.EncoderConfig{
-			MessageKey:   "message",
-			LevelKey:     "level",
-			EncodeLevel:  zapcore.CapitalLevelEncoder,
-			TimeKey:      "time",
-			EncodeTime:   zapcore.RFC3339TimeEncoder,
+			MessageKey: "message",
+
+			LevelKey:    "level",
+			EncodeLevel: zapcore.CapitalLevelEncoder,
+
+			TimeKey:    "time",
+			EncodeTime: zapcore.RFC3339TimeEncoder,
+
 			CallerKey:    "caller",
 			EncodeCaller: zapcore.ShortCallerEncoder,
 		},
@@ -143,12 +150,12 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 	}
 	fmt.Println("events: ", events)
 
-	tm := mapper.New(log)
-
-	result, err := tm.Parse(
+	result, err := mapper.TransactionsMapper(
+		log,
 		block,
 		events,
 		transactions,
+		cfg.Worker.Exp,
 		cfg.Worker.ChainID,
 		cfg.Worker.Currency,
 		cfg.Worker.Version,
@@ -172,6 +179,7 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 	return indexer.NewClient(
 		log,
 		proxyClient,
+		cfg.Worker.Exp,
 		cfg.IndexerManager.Page,
 		cfg.Worker.ChainID,
 		cfg.Worker.Currency,

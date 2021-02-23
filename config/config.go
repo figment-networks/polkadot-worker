@@ -11,6 +11,7 @@ type Config struct {
 type WorkerConfig struct {
 	ChainID  string `json:"chain_id"`
 	Currency string `json:"currency"`
+	Exp      int    `json:"exp"`
 	LogLevel string `json:"log_level"`
 	Network  string `json:"network"`
 	Version  string `json:"version"`

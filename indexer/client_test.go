@@ -69,6 +69,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 	fee := "1000"
 	height := uint64(7926)
 	isSuccess := true
+	nonce := int64(123)
 	now := time.Now()
 	time := strconv.Itoa(int(now.Unix()))
 	reqID, err := uuid.NewRandom()
@@ -77,7 +78,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 	blockRes := utils.BlockResponse(int64(height), blockHash, timestamppb.New(now))
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), height).Return(blockRes, nil)
 
-	trRes := utils.TransactionResponse(trExtrinsicIndex, isSuccess, fee, trHash, time)
+	trRes := utils.TransactionResponse(trExtrinsicIndex, nonce, isSuccess, fee, trHash, time)
 	ic.ProxyClient.On("GetTransactionByHeight", mock.AnythingOfType("*context.cancelCtx"), height).Return(trRes, nil)
 
 	evRes := utils.EventResponse(evIds)
