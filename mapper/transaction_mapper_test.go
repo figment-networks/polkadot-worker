@@ -232,14 +232,20 @@ func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
 	for _, tr := range transactions {
 		switch tr.Hash {
 		case tm.TrHash1:
-			additional1 := []string{"name:\"AccountId\"  value:\"12QVNbQdKKGM1ahx62TPAhc2Gy3G2i8UuizPES3Do1azeDVk\"", "name:\"Balance\"  value:\"155000000\""}
-			utils.ValidateTransaction(&tm.Suite, *transactions[0], tm.Time1, []utils.EventValues{tm.EventValues[1]}, additional1, tm.Exp,
-				uint64(tm.Height), tm.IsSuccess1, tm.BlockHash, tm.ChainID, tm.Currency, tm.TrHash1, tm.Fee1, "0.000000001DOT")
+			// additional1 := []string{`name:"AccountId" value:"12QVNbQdKKGM1ahx62TPAhc2Gy3G2i8UuizPES3Do1azeDVk"`, `name:"Balance" value:"155000000"`}
+			accountID := ""
+			senderID := ""
+			recipientID := "12QVNbQdKKGM1ahx62TPAhc2Gy3G2i8UuizPES3Do1azeDVk"
+			utils.ValidateTransaction(&tm.Suite, *tr, tm.Time1, []utils.EventValues{tm.EventValues[1]}, nil, tm.Exp,
+				uint64(tm.Height), tm.IsSuccess1, tm.BlockHash, tm.ChainID, tm.Currency, tm.TrHash1, tm.Fee1, "0.000000001DOT", "155000000", "0.000155DOT", accountID, senderID, recipientID)
 
 		case tm.TrHash2:
-			additional2 := []string{"name:\"AccountId\"  value:\"1435nBEPwxroPqR2CupS43mP2iVDckz16NEokXRT2j1bE8tH\"", "name:\"Balance\"  value:\"50000000000\""}
-			utils.ValidateTransaction(&tm.Suite, *transactions[1], tm.Time2, tm.EventValues[2:], additional2, tm.Exp,
-				uint64(tm.Height), tm.IsSuccess2, tm.BlockHash, tm.ChainID, tm.Currency, tm.TrHash2, "3000", "0.000000003DOT")
+			// additional2 := []string{`name:"DispatchError" value:"{\"Module\":{\"index\":5,\"error\":4}}"`, `name:"DispatchInfo" value:"{\"weight\":218434000,\"class\":\"Normal\",\"paysFee\":\"Yes\"}"`}
+			accountID := "1435nBEPwxroPqR2CupS43mP2iVDckz16NEokXRT2j1bE8tH"
+			senderID := "13SqN5TdZNtpYYyynfWvXBWetnYfTS4TTM63sVpRm8nsvcwe"
+			recipientID := "1435nBEPwxroPqR2CupS43mP2iVDckz16NEokXRT2j1bE8tH"
+			utils.ValidateTransaction(&tm.Suite, *tr, tm.Time2, tm.EventValues[2:], nil, tm.Exp,
+				uint64(tm.Height), tm.IsSuccess2, tm.BlockHash, tm.ChainID, tm.Currency, tm.TrHash2, "3000", "0.000000003DOT", "50000000000", "0.05DOT", accountID, senderID, recipientID)
 		}
 	}
 

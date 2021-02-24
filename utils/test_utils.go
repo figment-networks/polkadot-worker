@@ -84,7 +84,7 @@ func TransactionResponse(index, nonce int64, isSuccess bool, args, fee, hash, me
 	}
 }
 
-func ValidateTransaction(sut *suite.Suite, transaction structs.Transaction, time time.Time, ev []EventValues, additional []string, exp int, height uint64, isSuccess bool, blockHash, chainID, currency, trHash, fee, feeTxt string) {
+func ValidateTransaction(sut *suite.Suite, transaction structs.Transaction, time time.Time, ev []EventValues, additional []string, exp int, height uint64, isSuccess bool, blockHash, chainID, currency, trHash, fee, feeTxt, amount, amountTxt, accountID, senderID, recipientID string) {
 	sut.Require().Equal(height, transaction.Height)
 	sut.Require().Equal(blockHash, transaction.BlockHash)
 	sut.Require().Equal(trHash, transaction.Hash)
@@ -117,6 +117,45 @@ func ValidateTransaction(sut *suite.Suite, transaction structs.Transaction, time
 		sut.Require().Equal(e.Section, event.Module)
 		sut.Require().Equal([]string{expectedType}, event.Type)
 		sut.Require().Equal(time.Unix(), event.Completion.Unix())
-		sut.Require().EqualValues(additional, event.Additional["attributes"])
+
+		if a, ok := event.Amount["0"]; ok {
+			validateAmount(sut, &a, exp, amount, amountTxt, currency)
+		}
+
+		if account, ok := event.Node["versions"]; ok {
+			sut.Require().Equal(accountID, account[0].ID)
+		}
+
+		if account, ok := event.Node["sender"]; ok {
+			sut.Require().Equal(senderID, account[0].ID)
+		}
+
+		if account, ok := event.Node["recipient"]; ok {
+			sut.Require().Equal(recipientID, account[0].ID)
+
+			transfers := event.Transfers[recipientID]
+			sut.Require().Equal(recipientID, transfers[0].Account.ID)
+
+			validateAmount(sut, &transfers[0].Amounts[0], exp, amount, amountTxt, currency)
+		}
+
+		// for _, a := range additional {
+		// 	sut.Require().Contains(event.Additional["attributes"], a)
+		// }
+
 	}
+}
+
+func validateAmount(sut *suite.Suite, amount *structs.TransactionAmount, exp int, a, aTxt, currency string) {
+	if amount == nil {
+		return
+	}
+
+	n, ok := new(big.Int).SetString(a, 10)
+	sut.Require().True(ok)
+
+	sut.Require().Equal(n, amount.Numeric)
+	sut.Require().Equal(aTxt, amount.Text)
+	sut.Require().Equal(currency, amount.Currency)
+	sut.Require().EqualValues(exp, amount.Exp)
 }
