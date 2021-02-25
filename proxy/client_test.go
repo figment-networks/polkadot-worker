@@ -10,7 +10,6 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
-	"github.com/figment-networks/polkadothub-proxy/grpc/validator/validatorpb"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -35,9 +34,8 @@ func (bc *BlockClientTest) SetupTest() {
 	blockClientMock := blockClientMock{}
 	eventClientMock := eventClientMock{}
 	transactionClientMock := transactionClientMock{}
-	validatorClientMock := validatorClientMock{}
 
-	bc.Client = proxy.NewClient(logger.Sugar(), &blockClientMock, &eventClientMock, &transactionClientMock, &validatorClientMock)
+	bc.Client = proxy.NewClient(logger.Sugar(), &blockClientMock, &eventClientMock, &transactionClientMock)
 	bc.BlockClientMock = &blockClientMock
 	bc.EventClientMock = &eventClientMock
 	bc.TransactionClientMock = &transactionClientMock
@@ -215,13 +213,4 @@ func (m transactionClientMock) GetByHeight(ctx context.Context, in *transactionp
 func (m transactionClientMock) GetAnnotatedByHeight(ctx context.Context, in *transactionpb.GetAnnotatedByHeightRequest, opts ...grpc.CallOption) (*transactionpb.GetAnnotatedByHeightResponse, error) {
 	args := m.Called(ctx, in, opts)
 	return args.Get(0).(*transactionpb.GetAnnotatedByHeightResponse), args.Error(1)
-}
-
-type validatorClientMock struct {
-	mock.Mock
-}
-
-func (m validatorClientMock) GetAllByHeight(ctx context.Context, in *validatorpb.GetAllByHeightRequest, opts ...grpc.CallOption) (*validatorpb.GetAllByHeightResponse, error) {
-	args := m.Called(ctx, in, opts)
-	return args.Get(0).(*validatorpb.GetAllByHeightResponse), args.Error(1)
 }
