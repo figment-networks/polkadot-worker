@@ -5,9 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strconv"
 	"testing"
-	"time"
 
 	"github.com/figment-networks/polkadot-worker/indexer"
 	"github.com/figment-networks/polkadot-worker/proxy"
@@ -25,7 +23,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type IndexerClientTest struct {
@@ -36,7 +33,7 @@ type IndexerClientTest struct {
 	Height               []uint64
 	ReqID                uuid.UUID
 	BlockResponse        []utils.BlockResp
-	EventsResponse       [][]utils.EventsRes
+	EventsResponse       [][]utils.EventsResp
 	TransactionsResponse [][]utils.TransactionsResp
 
 	ChainID     string
@@ -47,7 +44,19 @@ type IndexerClientTest struct {
 }
 
 func (ic *IndexerClientTest) SetupTest() {
-	ic.init()
+	reqID, err := uuid.NewRandom()
+	ic.Require().Nil(err)
+	ic.ReqID = reqID
+
+	ic.ChainID = "Polkadot"
+	ic.Currency = "DOT"
+	ic.Exp = 12
+	ic.Version = "0.0.1"
+	ic.Height = []uint64{3941719, 3941720}
+
+	ic.BlockResponse = utils.GetBlocksResponses(ic.Height)
+	ic.EventsResponse = utils.GetEventsResponses(ic.Height)
+	ic.TransactionsResponse = utils.GetTransactionsResponses(ic.Height)
 
 	log, err := zap.NewDevelopment()
 	ic.Require().Nil(err)
@@ -111,7 +120,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 			err := json.Unmarshal(s.Payload, &transaction)
 			ic.Require().Nil(err)
 
-			expectedEvents := [][]utils.EventsRes{ic.EventsResponse[0][1:]}
+			expectedEvents := [][]utils.EventsResp{ic.EventsResponse[0][1:]}
 			utils.ValidateTransactions(&ic.Suite, transaction, ic.BlockResponse[0], ic.TransactionsResponse[0], expectedEvents, ic.ChainID, ic.Currency, int32(ic.Exp))
 			transactionFounded = true
 			break
@@ -334,11 +343,11 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 
 			switch transaction.Hash {
 			case ic.TransactionsResponse[0][0].Hash:
-				expectedEvents := [][]utils.EventsRes{ic.EventsResponse[0][1:]}
+				expectedEvents := [][]utils.EventsResp{ic.EventsResponse[0][1:]}
 				utils.ValidateTransactions(&ic.Suite, transaction, ic.BlockResponse[0], ic.TransactionsResponse[0], expectedEvents, ic.ChainID, ic.Currency, int32(ic.Exp))
 				break
 			case ic.TransactionsResponse[1][0].Hash:
-				expectedEvents := [][]utils.EventsRes{ic.EventsResponse[1][1:]}
+				expectedEvents := [][]utils.EventsResp{ic.EventsResponse[1][1:]}
 				utils.ValidateTransactions(&ic.Suite, transaction, ic.BlockResponse[1], ic.TransactionsResponse[1], expectedEvents, ic.ChainID, ic.Currency, int32(ic.Exp))
 			}
 			countTransaction++
@@ -568,183 +577,6 @@ func (ic *IndexerClientTest) validateBlock(block structs.Block, resp utils.Block
 	ic.Require().EqualValues(resp.Height, block.Height)
 	ic.Require().Equal(resp.Hash, block.Hash)
 	ic.Require().Equal(resp.Time.Seconds, block.Time.Unix())
-}
-
-func (ic *IndexerClientTest) init() {
-	reqID, err := uuid.NewRandom()
-	ic.Require().Nil(err)
-	ic.ReqID = reqID
-
-	ic.ChainID = "Polkadot"
-	ic.Currency = "DOT"
-	ic.Exp = 12
-	ic.Version = "0.0.1"
-	ic.Height = []uint64{3941719, 3941720}
-
-	now := time.Now()
-	ic.BlockResponse = []utils.BlockResp{{
-		Hash:   "0x9291d0465056465420ee87ce768527b320de496a6b6a75f84c14622043d6d413",
-		Height: int64(ic.Height[0]),
-		Time:   timestamppb.New(now.Add(-100 * time.Second)),
-	}, {
-		Hash:   "0x502f2a74beb519186d85cd3ed7f6dea30b821fad95e4820b2e220e91175f7aff",
-		Height: int64(ic.Height[1]),
-		Time:   timestamppb.New(now),
-	}}
-	ic.EventsResponse = [][]utils.EventsRes{{{
-		Index:          0,
-		ExtrinsicIndex: 0,
-		Description:    "[ An extrinsic completed successfully.]",
-		Method:         "ExtrinsicSuccess",
-		Phase:          "applyExtrinsic",
-		Section:        "system",
-		EventData: []utils.EventData{{
-			Name:  "DispatchInfo",
-			Value: "{\"weight\":161397000,\"class\":\"Mandatory\",\"paysFee\":\"Yes\"}",
-		}},
-	}, {
-		Index:          1,
-		ExtrinsicIndex: 1,
-		Description:    "[ A new \\[account\\] was created.]",
-		Method:         "NewAccount",
-		Phase:          "applyExtrinsic",
-		Section:        "system",
-		EventData: []utils.EventData{{
-			Name:  "AccountId",
-			Value: "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
-		}},
-
-		AccountID: "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
-	}, {
-		Index:          2,
-		ExtrinsicIndex: 1,
-		Description:    "[ An account was created with some free balance. \\[account, free_balance\\]]",
-		Method:         "Endowed",
-		Phase:          "applyExtrinsic",
-		Section:        "balances",
-		EventData: []utils.EventData{{
-			Name:  "AccountId",
-			Value: "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
-		}, {
-			Name:  "Balance",
-			Value: "10000000000",
-		}},
-
-		AccountID:  "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
-		Amount:     "10000000000",
-		AmountText: "0.01DOT",
-	}, {
-		Index:          3,
-		ExtrinsicIndex: 1,
-		Description:    "[ Transfer succeeded. \\[from, to, value\\]]",
-		Method:         "Transfer",
-		Phase:          "applyExtrinsic",
-		Section:        "balances",
-		EventData: []utils.EventData{{
-			Name:  "AccountId",
-			Value: "14rX5P237x97oEdNNkQurUCf9myK6T6fonYeqpyE5BcLfKqh",
-		}, {
-			Name:  "AccountId",
-			Value: "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
-		}, {
-			Name:  "Balance",
-			Value: "10000000000",
-		}},
-
-		SenderID:    "14rX5P237x97oEdNNkQurUCf9myK6T6fonYeqpyE5BcLfKqh",
-		RecipientID: "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
-		Amount:      "10000000000",
-		AmountText:  "0.01DOT",
-	}, {
-		Index:          4,
-		ExtrinsicIndex: 1,
-		Description:    "[ Some amount was deposited (e.g. for transaction fees). \\[who, deposit\\]]",
-		Method:         "Deposit",
-		Phase:          "applyExtrinsic",
-		Section:        "balances",
-		EventData: []utils.EventData{{
-			Name:  "AccountId",
-			Value: "15AcyKihrmGs9RD4AHUwRvv6LkhbeDyGH3GVADp1Biv4bfFv",
-		}, {
-			Name:  "Balance",
-			Value: "156000000",
-		}},
-
-		RecipientID: "15AcyKihrmGs9RD4AHUwRvv6LkhbeDyGH3GVADp1Biv4bfFv",
-		Amount:      "156000000",
-		AmountText:  "0.000156DOT",
-	}, {
-		Index:          5,
-		ExtrinsicIndex: 1,
-		Description:    "[ An extrinsic completed successfully. \\[info\\]]",
-		Method:         "ExtrinsicSuccess",
-		Phase:          "applyExtrinsic",
-		Section:        "system",
-		EventData: []utils.EventData{{
-			Name:  "DispatchInfo",
-			Value: "{\"weight\":189060000,\"class\":\"Normal\",\"paysFee\":\"Yes\"}",
-		}},
-	}}, {{
-		Index:          0,
-		ExtrinsicIndex: 0,
-		Description:    "[ An extrinsic completed successfully. \\[info\\]]",
-		Method:         "ExtrinsicSuccess",
-		Phase:          "applyExtrinsic",
-		Section:        "system",
-		EventData: []utils.EventData{{
-			Name:  "DispatchInfo",
-			Value: "{\"weight\":161397000,\"class\":\"Mandatory\",\"paysFee\":\"Yes\"}",
-		}},
-	}, {
-		Index:          1,
-		ExtrinsicIndex: 1,
-		Description:    "[ An account was removed whose balance was non-zero but below ExistentialDeposit,,  resulting in an outright loss. \\[account, balance\\]]",
-		Method:         "DustLost",
-		Phase:          "applyExtrinsic",
-		Section:        "balances",
-		EventData: []utils.EventData{{
-			Name:  "AccountId",
-			Value: "14DzyWx1Xq7ZqEjXMWJp6jRUq34hAXJHuj8wts3kRvikEvo5",
-		}, {
-			Name:  "Balance",
-			Value: "10000000",
-		}},
-
-		AccountID:  "14DzyWx1Xq7ZqEjXMWJp6jRUq34hAXJHuj8wts3kRvikEvo5",
-		Amount:     "10000000",
-		AmountText: "0.00001DOT",
-	}}}
-	ic.TransactionsResponse = [][]utils.TransactionsResp{{{
-		Index:     1,
-		Args:      "",
-		Fee:       "1000",
-		Hash:      "0xd922a8a95e1dcf62375026ffd412c28f842854462296695d935c296f5107153f",
-		IsSuccess: true,
-		Raw:       `{"isSigned":true,"method":{"args":[{"Id":"14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV"},"10.0000 mDOT (old)"],"method":"transferKeepAlive","section":"balances"},"era":{"MortalEra":{"period":"64","phase":"18"}},"nonce":"123","signature":"0xa8762de3dbfafab6cd98129dc82b1cfbcc772d62d949a0d1d065bc28a1774a090f8dde927970876c30d618f8b299422f9f1eb1a4ecb3b1eaba420c8005c04585","signer":{"Id":"14rX5P237x97oEdNNkQurUCf9myK6T6fonYeqpyE5BcLfKqh"},"tip":"1"}`,
-		Nonce:     123,
-		Method:    "transferKeepAlive",
-		Section:   "balances",
-		Tip:       "1",
-		Time:      strconv.Itoa(int(now.Add(-100 * time.Second).Unix())),
-
-		FeeAmount:    "1001",
-		FeeAmountTxt: "0.000000001001DOT",
-	}}, {{
-		Index:     1,
-		Args:      "",
-		Fee:       "156000000",
-		Hash:      "0xf59d6c5642ddec857fdba05544332340e25a3a73cb1b74c78f3b79bdbed8b6fe",
-		IsSuccess: true,
-		Raw:       `{"isSigned":true,"method":{"args":[{"Id":"14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV"},"10.0000 mDOT (old)"],"method":"transferKeepAlive","section":"balances"},"era":{"MortalEra":{"period":"64","phase":"18"}},"nonce":"0","signature":"0xa8762de3dbfafab6cd98129dc82b1cfbcc772d62d949a0d1d065bc28a1774a090f8dde927970876c30d618f8b299422f9f1eb1a4ecb3b1eaba420c8005c04585","signer":{"Id":"14rX5P237x97oEdNNkQurUCf9myK6T6fonYeqpyE5BcLfKqh"},"tip":"0"}`,
-		Nonce:     123,
-		Method:    "transfer",
-		Section:   "balances",
-		Tip:       "0",
-		Time:      strconv.Itoa(int(now.Add(-100 * time.Second).Unix())),
-
-		FeeAmount:    "156000000",
-		FeeAmountTxt: "0.000156DOT",
-	}}}
 }
 
 func TestIndexerClient(t *testing.T) {

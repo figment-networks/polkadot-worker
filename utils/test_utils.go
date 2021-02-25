@@ -3,6 +3,7 @@ package utils
 import (
 	"math/big"
 	"strconv"
+	"time"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
@@ -30,7 +31,7 @@ func BlockResponse(resp BlockResp) *blockpb.GetByHeightResponse {
 	}
 }
 
-type EventsRes struct {
+type EventsResp struct {
 	Index          int64
 	ExtrinsicIndex int64
 	Description    string
@@ -52,7 +53,7 @@ type EventData struct {
 	Value string
 }
 
-func EventsResponse(resp []EventsRes) *eventpb.GetByHeightResponse {
+func EventsResponse(resp []EventsResp) *eventpb.GetByHeightResponse {
 	evts := make([]*eventpb.Event, len(resp))
 
 	for i, e := range resp {
@@ -118,7 +119,7 @@ func TransactionsResponse(resp []TransactionsResp) *transactionpb.GetByHeightRes
 	}
 }
 
-func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp []TransactionsResp, evResp [][]EventsRes, chainID, currency string, exp int32) {
+func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp []TransactionsResp, evResp [][]EventsResp, chainID, currency string, exp int32) {
 	sut.Require().Equal(bResp.Hash, transaction.BlockHash)
 	sut.Require().EqualValues(bResp.Height, transaction.Height)
 
@@ -202,4 +203,179 @@ func validateAmount(sut *suite.Suite, amount *structs.TransactionAmount, exp int
 	sut.Require().Equal(aTxt, amount.Text)
 	sut.Require().Equal(currency, amount.Currency)
 	sut.Require().EqualValues(exp, amount.Exp)
+}
+
+func GetTransactionsResponses(height []uint64) [][]TransactionsResp {
+	now := time.Now()
+
+	return [][]TransactionsResp{{{
+		Index:     1,
+		Args:      "",
+		Fee:       "1000",
+		Hash:      "0xd922a8a95e1dcf62375026ffd412c28f842854462296695d935c296f5107153f",
+		IsSuccess: true,
+		Raw:       `{"isSigned":true,"method":{"args":[{"Id":"14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV"},"10.0000 mDOT (old)"],"method":"transferKeepAlive","section":"balances"},"era":{"MortalEra":{"period":"64","phase":"18"}},"nonce":"123","signature":"0xa8762de3dbfafab6cd98129dc82b1cfbcc772d62d949a0d1d065bc28a1774a090f8dde927970876c30d618f8b299422f9f1eb1a4ecb3b1eaba420c8005c04585","signer":{"Id":"14rX5P237x97oEdNNkQurUCf9myK6T6fonYeqpyE5BcLfKqh"},"tip":"1"}`,
+		Nonce:     123,
+		Method:    "transferKeepAlive",
+		Section:   "balances",
+		Tip:       "1",
+		Time:      strconv.Itoa(int(now.Add(-100 * time.Second).Unix())),
+
+		FeeAmount:    "1001",
+		FeeAmountTxt: "0.000000001001DOT",
+	}}, {{
+		Index:     1,
+		Args:      "",
+		Fee:       "156000000",
+		Hash:      "0xf59d6c5642ddec857fdba05544332340e25a3a73cb1b74c78f3b79bdbed8b6fe",
+		IsSuccess: true,
+		Raw:       `{"isSigned":true,"method":{"args":[{"Id":"14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV"},"10.0000 mDOT (old)"],"method":"transferKeepAlive","section":"balances"},"era":{"MortalEra":{"period":"64","phase":"18"}},"nonce":"0","signature":"0xa8762de3dbfafab6cd98129dc82b1cfbcc772d62d949a0d1d065bc28a1774a090f8dde927970876c30d618f8b299422f9f1eb1a4ecb3b1eaba420c8005c04585","signer":{"Id":"14rX5P237x97oEdNNkQurUCf9myK6T6fonYeqpyE5BcLfKqh"},"tip":"0"}`,
+		Nonce:     123,
+		Method:    "transfer",
+		Section:   "balances",
+		Tip:       "0",
+		Time:      strconv.Itoa(int(now.Add(-100 * time.Second).Unix())),
+
+		FeeAmount:    "156000000",
+		FeeAmountTxt: "0.000156DOT",
+	}}}
+}
+
+func GetBlocksResponses(height []uint64) []BlockResp {
+	now := time.Now()
+	return []BlockResp{{
+		Hash:   "0x9291d0465056465420ee87ce768527b320de496a6b6a75f84c14622043d6d413",
+		Height: int64(height[0]),
+		Time:   timestamppb.New(now.Add(-100 * time.Second)),
+	}, {
+		Hash:   "0x502f2a74beb519186d85cd3ed7f6dea30b821fad95e4820b2e220e91175f7aff",
+		Height: int64(height[1]),
+		Time:   timestamppb.New(now),
+	}}
+}
+
+func GetEventsResponses(height []uint64) [][]EventsResp {
+	return [][]EventsResp{{{
+		Index:          0,
+		ExtrinsicIndex: 0,
+		Description:    "[ An extrinsic completed successfully.]",
+		Method:         "ExtrinsicSuccess",
+		Phase:          "applyExtrinsic",
+		Section:        "system",
+		EventData: []EventData{{
+			Name:  "DispatchInfo",
+			Value: "{\"weight\":161397000,\"class\":\"Mandatory\",\"paysFee\":\"Yes\"}",
+		}},
+	}, {
+		Index:          1,
+		ExtrinsicIndex: 1,
+		Description:    "[ A new \\[account\\] was created.]",
+		Method:         "NewAccount",
+		Phase:          "applyExtrinsic",
+		Section:        "system",
+		EventData: []EventData{{
+			Name:  "AccountId",
+			Value: "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
+		}},
+
+		AccountID: "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
+	}, {
+		Index:          2,
+		ExtrinsicIndex: 1,
+		Description:    "[ An account was created with some free balance. \\[account, free_balance\\]]",
+		Method:         "Endowed",
+		Phase:          "applyExtrinsic",
+		Section:        "balances",
+		EventData: []EventData{{
+			Name:  "AccountId",
+			Value: "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
+		}, {
+			Name:  "Balance",
+			Value: "10000000000",
+		}},
+
+		AccountID:  "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
+		Amount:     "10000000000",
+		AmountText: "0.01DOT",
+	}, {
+		Index:          3,
+		ExtrinsicIndex: 1,
+		Description:    "[ Transfer succeeded. \\[from, to, value\\]]",
+		Method:         "Transfer",
+		Phase:          "applyExtrinsic",
+		Section:        "balances",
+		EventData: []EventData{{
+			Name:  "AccountId",
+			Value: "14rX5P237x97oEdNNkQurUCf9myK6T6fonYeqpyE5BcLfKqh",
+		}, {
+			Name:  "AccountId",
+			Value: "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
+		}, {
+			Name:  "Balance",
+			Value: "10000000000",
+		}},
+
+		SenderID:    "14rX5P237x97oEdNNkQurUCf9myK6T6fonYeqpyE5BcLfKqh",
+		RecipientID: "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
+		Amount:      "10000000000",
+		AmountText:  "0.01DOT",
+	}, {
+		Index:          4,
+		ExtrinsicIndex: 1,
+		Description:    "[ Some amount was deposited (e.g. for transaction fees). \\[who, deposit\\]]",
+		Method:         "Deposit",
+		Phase:          "applyExtrinsic",
+		Section:        "balances",
+		EventData: []EventData{{
+			Name:  "AccountId",
+			Value: "15AcyKihrmGs9RD4AHUwRvv6LkhbeDyGH3GVADp1Biv4bfFv",
+		}, {
+			Name:  "Balance",
+			Value: "156000000",
+		}},
+
+		RecipientID: "15AcyKihrmGs9RD4AHUwRvv6LkhbeDyGH3GVADp1Biv4bfFv",
+		Amount:      "156000000",
+		AmountText:  "0.000156DOT",
+	}, {
+		Index:          5,
+		ExtrinsicIndex: 1,
+		Description:    "[ An extrinsic completed successfully. \\[info\\]]",
+		Method:         "ExtrinsicSuccess",
+		Phase:          "applyExtrinsic",
+		Section:        "system",
+		EventData: []EventData{{
+			Name:  "DispatchInfo",
+			Value: "{\"weight\":189060000,\"class\":\"Normal\",\"paysFee\":\"Yes\"}",
+		}},
+	}}, {{
+		Index:          0,
+		ExtrinsicIndex: 0,
+		Description:    "[ An extrinsic completed successfully. \\[info\\]]",
+		Method:         "ExtrinsicSuccess",
+		Phase:          "applyExtrinsic",
+		Section:        "system",
+		EventData: []EventData{{
+			Name:  "DispatchInfo",
+			Value: "{\"weight\":161397000,\"class\":\"Mandatory\",\"paysFee\":\"Yes\"}",
+		}},
+	}, {
+		Index:          1,
+		ExtrinsicIndex: 1,
+		Description:    "[ An account was removed whose balance was non-zero but below ExistentialDeposit,,  resulting in an outright loss. \\[account, balance\\]]",
+		Method:         "DustLost",
+		Phase:          "applyExtrinsic",
+		Section:        "balances",
+		EventData: []EventData{{
+			Name:  "AccountId",
+			Value: "14DzyWx1Xq7ZqEjXMWJp6jRUq34hAXJHuj8wts3kRvikEvo5",
+		}, {
+			Name:  "Balance",
+			Value: "10000000",
+		}},
+
+		AccountID:  "14DzyWx1Xq7ZqEjXMWJp6jRUq34hAXJHuj8wts3kRvikEvo5",
+		Amount:     "10000000",
+		AmountText: "0.00001DOT",
+	}}}
 }
