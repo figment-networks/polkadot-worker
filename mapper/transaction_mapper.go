@@ -18,20 +18,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-const (
-	maxPrecision = 12
-)
-
-var expDivider *big.Float
-
-func initExpDividers(exp int64) {
-	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(exp), nil)
-	expDivider = new(big.Float).SetFloat64(float64(div.Int64()))
-}
-
 // TransactionsMapper maps Block and Transactions response into database Transcations struct
 func TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse,
-	transactionRes *transactionpb.GetByHeightResponse, exp int, chainID, currency, version string) ([]*structs.Transaction, error) {
+	transactionRes *transactionpb.GetByHeightResponse, exp int, div *big.Float, chainID, currency, version string) ([]*structs.Transaction, error) {
 	var transactions []*structs.Transaction
 	transactionMap := make(map[string]struct{})
 
@@ -42,9 +31,7 @@ func TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightRes
 		return nil, nil
 	}
 
-	initExpDividers(int64(exp))
-
-	allEvents, err := parseEvents(log, eventRes, currency, exp)
+	allEvents, err := parseEvents(log, eventRes, currency, div, exp)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +46,7 @@ func TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightRes
 			return nil, err
 		}
 
-		fee, err := getTransactionFee(exp, currency, t.PartialFee, t.Tip)
+		fee, err := getTransactionFee(exp, div, currency, t.PartialFee, t.Tip)
 		if err != nil {
 			return nil, err
 		}
@@ -71,10 +58,10 @@ func TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightRes
 			ChainID:   chainID,
 			Time:      *time,
 			Fee:       fee,
-			GasUsed:   0,
 			Version:   version,
 			Events:    allEvents.getEventsByTrIndex(t.ExtrinsicIndex, strconv.Itoa(int(t.Nonce)), t.Hash, time),
 			HasErrors: !t.IsSuccess,
+			Raw:       []byte(t.Raw),
 		})
 	}
 
@@ -100,7 +87,7 @@ func parseTime(timeStr string) (*time.Time, error) {
 	return &time, nil
 }
 
-func getTransactionFee(exp int, currency, partialFeeStr, tipStr string) ([]structs.TransactionAmount, error) {
+func getTransactionFee(exp int, divider *big.Float, currency, partialFeeStr, tipStr string) ([]structs.TransactionAmount, error) {
 	var ok bool
 	var fee, tip *big.Int
 
@@ -114,7 +101,7 @@ func getTransactionFee(exp int, currency, partialFeeStr, tipStr string) ([]struc
 
 	amount := new(big.Int).Add(fee, tip)
 
-	textAmount, err := countCurrencyAmount(exp, amount.String())
+	textAmount, err := countCurrencyAmount(exp, amount.String(), divider)
 	if err != nil {
 		return nil, errors.New("Could not count currency amount")
 	}
@@ -164,12 +151,12 @@ func subWithNonceAndTime(subs *[]structs.SubsetEvent, nonce string, time *time.T
 	return events
 }
 
-func countCurrencyAmount(exp int, value string) (*big.Float, error) {
+func countCurrencyAmount(exp int, value string, divider *big.Float) (*big.Float, error) {
 	amount := new(big.Float)
 	amount, ok := amount.SetString(value)
 	if !ok {
 		return nil, fmt.Errorf("Could not create big float from value %s", value)
 	}
 
-	return new(big.Float).Quo(amount, expDivider), nil
+	return new(big.Float).Quo(amount, divider), nil
 }

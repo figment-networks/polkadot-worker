@@ -13,9 +13,10 @@ import (
 	"go.uber.org/zap"
 )
 
-func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, currency string, exp int) (eventMap, error) {
+const DESCRIPTION_ARGS = `\\\[.*\\\]`
+
+func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, currency string, divider *big.Float, exp int) (eventMap, error) {
 	evIndexMap := make(map[int64]struct{})
-	trIndexMap := make(map[int64]struct{})
 
 	events := make(map[int64][]structs.TransactionEvent)
 	for _, e := range eventRes.Events {
@@ -23,12 +24,11 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 			continue
 		}
 
-		if _, ok := trIndexMap[e.ExtrinsicIndex]; !ok {
-			trIndexMap[e.ExtrinsicIndex] = struct{}{}
+		if _, ok := events[e.ExtrinsicIndex]; !ok {
 			events[e.ExtrinsicIndex] = make([]structs.TransactionEvent, 0)
 		}
 
-		event, err := getEvent(log, e, currency, exp)
+		event, err := getEvent(log, e, currency, exp, divider)
 		if err != nil {
 			return nil, err
 		}
@@ -60,24 +60,23 @@ func isEventUnique(evIndexMap map[int64]struct{}, evIdx int64) bool {
 type event struct {
 	structs.SubsetEvent
 
-	currency string
+	accountID          string
+	recipientAccountID string
+	senderAccountID    string
+	value              string
 
-	accountID          *string
-	recipientAccountID *string
-	senderAccountID    *string
-	value              *string
-
+	currency  string
 	eventType []string
 }
 
-func getEvent(log *zap.SugaredLogger, evpb *eventpb.Event, currency string, exp int) (structs.SubsetEvent, error) {
+func getEvent(log *zap.SugaredLogger, evpb *eventpb.Event, currency string, exp int, divider *big.Float) (structs.SubsetEvent, error) {
 	var e event
 
 	if err := e.parseEventDescription(log, evpb); err != nil {
 		return structs.SubsetEvent{}, err
 	}
 
-	amount, err := getAmount(e.value, exp, currency)
+	amount, err := getAmount(e.value, exp, currency, divider)
 	if err != nil {
 		return structs.SubsetEvent{}, err
 	}
@@ -93,6 +92,12 @@ func getEvent(log *zap.SugaredLogger, evpb *eventpb.Event, currency string, exp 
 		e.Type = e.eventType
 	} else {
 		e.Type = []string{evpb.Method}
+	}
+
+	if evpb.Error != "" {
+		e.Error = &structs.SubsetEventError{
+			Message: evpb.Error,
+		}
 	}
 
 	return e.SubsetEvent, nil
@@ -127,10 +132,7 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 			e.value, err = getBalance(ev.Data[i])
 		default:
 			log.Error("Unknown value to parse event", zap.String("event_value", v))
-		}
-
-		if err != nil {
-			return err
+			return fmt.Errorf("Unknown value to parse event %q", v)
 		}
 
 		attributes[i] = fmt.Sprintf("%v", ev.Data[i])
@@ -145,7 +147,7 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 }
 
 func getValues(description string) ([]string, error) {
-	vls := string(regexp.MustCompile(`\\\[.*\\\]`).Find([]byte(description)))
+	vls := string(regexp.MustCompile(DESCRIPTION_ARGS).Find([]byte(description)))
 	if len(vls) < 5 {
 		// Arguments are not required in description
 		return nil, nil
@@ -160,34 +162,34 @@ func getValues(description string) ([]string, error) {
 	return values, nil
 }
 
-func getValue(data *eventpb.EventData, expected string) (*string, error) {
+func getValue(data *eventpb.EventData, expected string) (string, error) {
 	if data.Name != expected {
-		return nil, fmt.Errorf("unexpected data name %q expected %q value %q", data.Name, expected, data.Value)
+		return "", fmt.Errorf("unexpected data name %q expected %q value %q", data.Name, expected, data.Value)
 	}
 
-	return &data.Value, nil
+	return data.Value, nil
 }
 
-func getAccountID(data *eventpb.EventData) (*string, error) {
+func getAccountID(data *eventpb.EventData) (string, error) {
 	return getValue(data, "AccountId")
 }
 
-func getBalance(data *eventpb.EventData) (*string, error) {
+func getBalance(data *eventpb.EventData) (string, error) {
 	return getValue(data, "Balance")
 }
 
-func getAmount(value *string, exp int, currency string) (*structs.TransactionAmount, error) {
-	if value == nil {
+func getAmount(value string, exp int, currency string, divider *big.Float) (*structs.TransactionAmount, error) {
+	if value == "" {
 		return nil, nil
 	}
 
 	n := new(big.Int)
-	n, ok := n.SetString(*value, 10)
+	n, ok := n.SetString(value, 10)
 	if !ok {
-		return nil, fmt.Errorf("Could not create big int from value %s", *value)
+		return nil, fmt.Errorf("Could not create big int from value %s", value)
 	}
 
-	amount, err := countCurrencyAmount(exp, *value)
+	amount, err := countCurrencyAmount(exp, value, divider)
 	if err != nil {
 		return nil, errors.New("Could not count currency amount")
 	}
@@ -210,27 +212,27 @@ func (e *event) appendAmount(amount *structs.TransactionAmount) {
 }
 
 func (e *event) appendAccounts() {
-	if e.accountID == nil && e.senderAccountID == nil && e.recipientAccountID == nil {
+	if e.accountID == "" && e.senderAccountID == "" && e.recipientAccountID == "" {
 		return
 	}
 
 	node := make(map[string][]structs.Account)
 
-	if e.accountID != nil {
+	if e.accountID != "" {
 		node["versions"] = []structs.Account{{
-			ID: *e.accountID,
+			ID: e.accountID,
 		}}
 	}
 
-	if e.senderAccountID != nil {
+	if e.senderAccountID != "" {
 		node["sender"] = []structs.Account{{
-			ID: *e.senderAccountID,
+			ID: e.senderAccountID,
 		}}
 	}
 
-	if e.recipientAccountID != nil {
+	if e.recipientAccountID != "" {
 		node["recipient"] = []structs.Account{{
-			ID: *e.recipientAccountID,
+			ID: e.recipientAccountID,
 		}}
 	}
 
@@ -238,12 +240,12 @@ func (e *event) appendAccounts() {
 }
 
 func (e *event) appendSender(amount *structs.TransactionAmount) {
-	if e.senderAccountID == nil {
+	if e.senderAccountID == "" {
 		return
 	}
 
 	account := structs.Account{
-		ID: *e.senderAccountID,
+		ID: e.senderAccountID,
 	}
 
 	eventTransfer := structs.EventTransfer{
@@ -257,12 +259,12 @@ func (e *event) appendSender(amount *structs.TransactionAmount) {
 }
 
 func (e *event) appendRecipient(amount *structs.TransactionAmount) {
-	if e.recipientAccountID == nil {
+	if e.recipientAccountID == "" {
 		return
 	}
 
 	account := structs.Account{
-		ID: *e.recipientAccountID,
+		ID: e.recipientAccountID,
 	}
 
 	eventTransfer := structs.EventTransfer{
@@ -275,6 +277,6 @@ func (e *event) appendRecipient(amount *structs.TransactionAmount) {
 	}
 
 	transfers := make(map[string][]structs.EventTransfer)
-	transfers[*e.recipientAccountID] = []structs.EventTransfer{eventTransfer}
+	transfers[e.recipientAccountID] = []structs.EventTransfer{eventTransfer}
 	e.Transfers = transfers
 }

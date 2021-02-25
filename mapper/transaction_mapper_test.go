@@ -1,6 +1,7 @@
 package mapper_test
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/figment-networks/polkadot-worker/mapper"
@@ -21,6 +22,7 @@ type TransactionMapperTest struct {
 
 	ChainID  string
 	Currency string
+	Divider  *big.Float
 	Exp      int
 	Version  string
 
@@ -46,6 +48,9 @@ func (tm *TransactionMapperTest) SetupTest() {
 
 	height := []uint64{123, 321}
 
+	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(tm.Exp)), nil)
+	tm.Divider = new(big.Float).SetFloat64(float64(div.Int64()))
+
 	tm.Blocks = utils.GetBlocksResponses(height)
 	tm.Events = utils.GetEventsResponses(height)
 	tm.Transactions = utils.GetTransactionsResponses(height)
@@ -61,17 +66,17 @@ func (tm *TransactionMapperTest) SetupTest() {
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_EmptyResponse() {
-	transactions, err := mapper.TransactionsMapper(tm.Log, nil, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.ChainID, tm.Currency, tm.Version)
+	transactions, err := mapper.TransactionsMapper(tm.Log, nil, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(transactions)
 	tm.Require().Nil(err)
 
-	transactions, err = mapper.TransactionsMapper(tm.Log, tm.BlockResponse, nil, tm.TransactionsResponse, tm.Exp, tm.ChainID, tm.Currency, tm.Version)
+	transactions, err = mapper.TransactionsMapper(tm.Log, tm.BlockResponse, nil, tm.TransactionsResponse, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(transactions)
 	tm.Require().Nil(err)
 
-	transactions, err = mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, nil, tm.Exp, tm.ChainID, tm.Currency, tm.Version)
+	transactions, err = mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, nil, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(transactions)
 	tm.Require().Nil(err)
@@ -80,7 +85,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_EmptyResponse() {
 func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
 	tm.TransactionsResponse.Transactions[0].Time = "[object Object]"
 
-	transactions, err := mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.ChainID, tm.Currency, tm.Version)
+	transactions, err := mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(transactions)
 
@@ -91,7 +96,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
 func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() {
 	tm.TransactionsResponse.Transactions[0].PartialFee = "bad"
 
-	transactions, err := mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.ChainID, tm.Currency, tm.Version)
+	transactions, err := mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(transactions)
 
@@ -102,7 +107,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() 
 func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
 	tm.TransactionsResponse.Transactions[0].Tip = "bad"
 
-	transactions, err := mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.ChainID, tm.Currency, tm.Version)
+	transactions, err := mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(transactions)
 
@@ -111,7 +116,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
-	transactions, err := mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.ChainID, tm.Currency, tm.Version)
+	transactions, err := mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(err)
 

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -148,12 +149,16 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 	}
 	fmt.Println("events: ", events)
 
+	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(cfg.Worker.Exp)), nil)
+	divider := new(big.Float).SetFloat64(float64(div.Int64()))
+
 	result, err := mapper.TransactionsMapper(
 		log,
 		block,
 		events,
 		transactions,
 		cfg.Worker.Exp,
+		divider,
 		cfg.Worker.ChainID,
 		cfg.Worker.Currency,
 		cfg.Worker.Version,
