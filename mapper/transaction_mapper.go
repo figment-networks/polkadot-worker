@@ -59,7 +59,7 @@ func TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightRes
 			Time:      *time,
 			Fee:       fee,
 			Version:   version,
-			Events:    allEvents.getEventsByTrIndex(t.ExtrinsicIndex, strconv.Itoa(int(t.Nonce)), t.Hash, time),
+			Events:    allEvents.getEventsByTrIndex(t.ExtrinsicIndex, strconv.FormatUint(uint64(t.Nonce), 10), t.Hash, time),
 			HasErrors: !t.IsSuccess,
 			Raw:       []byte(t.Raw),
 		})
