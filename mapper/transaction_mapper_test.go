@@ -1,19 +1,18 @@
 package mapper_test
 
 import (
-	"strconv"
+	"math/big"
 	"testing"
-	"time"
 
 	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/proxy"
 	"github.com/figment-networks/polkadot-worker/utils"
-	"go.uber.org/zap"
-
-	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
+	"go.uber.org/zap"
+
+	"github.com/figment-networks/indexing-engine/metrics"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -21,120 +20,110 @@ import (
 type TransactionMapperTest struct {
 	suite.Suite
 
-	BlockHash              string
-	ChainID                string
-	Currency               string
-	EvIds                  [][2]int64
-	Fee1, Fee2             string
-	Height                 int64
-	IsSuccess1, IsSuccess2 bool
-	Time1, Time2           string
-	TrHash1, TrHash2       string
-	TrIndex1, TrIndex2     int64
-	Version                string
+	ChainID  string
+	Currency string
+	Divider  *big.Float
+	Exp      int
+	Version  string
 
-	BlockRes       *blockpb.GetByHeightResponse
-	EventRes       *eventpb.GetByHeightResponse
-	TransactionRes *transactionpb.GetByHeightResponse
+	Blocks       []utils.BlockResp
+	Events       [][]utils.EventsResp
+	Transactions [][]utils.TransactionsResp
 
-	Log               *zap.SugaredLogger
-	TransactionMapper *mapper.TransactionMapper
+	BlockResponse        *blockpb.GetByHeightResponse
+	EventsResponse       *eventpb.GetByHeightResponse
+	TransactionsResponse *transactionpb.GetByHeightResponse
+
+	Log *zap.SugaredLogger
 }
 
 func (tm *TransactionMapperTest) SetupTest() {
-	tm.ChainID = "chainID"
-	tm.Currency = "DOT"
-	tm.Version = "0.0.1"
-	tm.BlockHash = "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf"
-	tm.Height = int64(120)
-	tm.EvIds = [][2]int64{{1, 3}, {2, 2}}
-	tm.TrIndex1, tm.TrIndex1 = int64(1), int64(2)
-	tm.Fee1, tm.Fee2 = "1000", "2000"
-	tm.TrHash1 = "0x01d0515460693e5ade5627461c6e05668b03c6e8bc1dbb61afab298fcf6b8e72"
-	tm.TrHash2 = "0xe05668b03c6e8bc1dbb61afab01d0515460693e5ade5627461c6298fcf6b8e72"
-	tm.IsSuccess1, tm.IsSuccess2 = true, false
-	tm.Time1 = strconv.Itoa(int(time.Now().Add(-500).Unix()))
-	tm.Time2 = strconv.Itoa(int(time.Now().Add(-900).Unix()))
-
-	tm.BlockRes = utils.BlockResponse(tm.Height, tm.BlockHash, nil)
-	tm.EventRes = utils.EventResponse(tm.EvIds)
-
-	tr1 := utils.TransactionResponse(tm.TrIndex1, tm.IsSuccess1, tm.Fee1, tm.TrHash1, tm.Time1)
-	tr2 := utils.TransactionResponse(tm.TrIndex2, tm.IsSuccess2, tm.Fee2, tm.TrHash2, tm.Time2)
-
-	tm.TransactionRes = &transactionpb.GetByHeightResponse{
-		Transactions: append(append(tr1.Transactions, tr1.Transactions...), tr2.Transactions...),
-	}
-
 	conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
 	proxy.TransactionConversionDuration = conversionDuration.WithLabels("transaction")
+
+	tm.ChainID = "Polkadot"
+	tm.Currency = "DOT"
+	tm.Exp = 12
+	tm.Version = "0.0.1"
+
+	height := []uint64{123, 321}
+
+	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(tm.Exp)), nil)
+	tm.Divider = new(big.Float).SetFloat64(float64(div.Int64()))
+
+	tm.Blocks = utils.GetBlocksResponses(height)
+	tm.Events = utils.GetEventsResponses(height)
+	tm.Transactions = utils.GetTransactionsResponses(height)
+
+	tm.BlockResponse = utils.BlockResponse(tm.Blocks[0])
+	tm.EventsResponse = utils.EventsResponse(tm.Events[0])
+	tm.TransactionsResponse = utils.TransactionsResponse(tm.Transactions[0])
 
 	log, err := zap.NewDevelopment()
 	tm.Require().Nil(err)
 
 	tm.Log = log.Sugar()
-
-	tm.TransactionMapper = mapper.New(tm.Log)
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_EmptyResponse() {
-	transaction, err := tm.TransactionMapper.Parse(nil, tm.EventRes, tm.TransactionRes, tm.ChainID, tm.Currency, tm.Version)
+	transactions, err := mapper.TransactionsMapper(tm.Log, nil, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
 
-	tm.Require().Nil(transaction)
+	tm.Require().Nil(transactions)
 	tm.Require().Nil(err)
 
-	transaction, err = tm.TransactionMapper.Parse(tm.BlockRes, nil, tm.TransactionRes, tm.ChainID, tm.Currency, tm.Version)
+	transactions, err = mapper.TransactionsMapper(tm.Log, tm.BlockResponse, nil, tm.TransactionsResponse, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
 
-	tm.Require().Nil(transaction)
+	tm.Require().Nil(transactions)
 	tm.Require().Nil(err)
 
-	transaction, err = tm.TransactionMapper.Parse(tm.BlockRes, tm.EventRes, nil, tm.ChainID, tm.Currency, tm.Version)
+	transactions, err = mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, nil, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
 
-	tm.Require().Nil(transaction)
+	tm.Require().Nil(transactions)
 	tm.Require().Nil(err)
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
-	tm.TransactionRes.Transactions[0].Time = "[object Object]"
+	tm.TransactionsResponse.Transactions[0].Time = "[object Object]"
 
-	transaction, err := tm.TransactionMapper.Parse(tm.BlockRes, tm.EventRes, tm.TransactionRes, tm.ChainID, tm.Currency, tm.Version)
+	transactions, err := mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
 
-	tm.Require().Nil(transaction)
+	tm.Require().Nil(transactions)
 
 	tm.Require().NotNil(err)
 	tm.Require().Contains(err.Error(), "Could not parse transaction time: strconv.Atoi: parsing \"[object Object]\": invalid syntax")
 }
 
+func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() {
+	tm.TransactionsResponse.Transactions[0].PartialFee = "bad"
+
+	transactions, err := mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
+
+	tm.Require().Nil(transactions)
+
+	tm.Require().NotNil(err)
+	tm.Require().Contains(err.Error(), "Could not parse transaction partial fee \"bad\"")
+}
+
+func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
+	tm.TransactionsResponse.Transactions[0].Tip = "bad"
+
+	transactions, err := mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
+
+	tm.Require().Nil(transactions)
+
+	tm.Require().NotNil(err)
+	tm.Require().Contains(err.Error(), "Could not parse transaction tip \"bad\"")
+}
+
 func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
-	transaction, err := tm.TransactionMapper.Parse(tm.BlockRes, tm.EventRes, tm.TransactionRes, tm.ChainID, tm.Currency, tm.Version)
+	transactions, err := mapper.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse, tm.Exp, tm.Divider, tm.ChainID, tm.Currency, tm.Version)
 
 	tm.Require().Nil(err)
 
-	tm.Require().Len(transaction, 2)
+	tm.Require().Len(transactions, 1)
 
-	tm.Require().Equal(tm.BlockHash, transaction[0].BlockHash)
-	tm.Require().Equal(tm.ChainID, transaction[0].ChainID)
-	tm.Require().EqualValues(tm.Height, transaction[0].Height)
-
-	tm.Require().Equal(tm.TrHash1, transaction[0].Hash)
-	tm.Require().Equal(tm.Time1, transaction[0].Epoch)
-
-	timeInt1, _ := strconv.Atoi(tm.Time1)
-	tm.Require().Equal(time.Unix(int64(timeInt1), 0), transaction[0].Time)
-
-	tm.Require().Equal(tm.Fee1, transaction[0].Fee[0].Text)
-	tm.Require().Equal("0.0.1", transaction[0].Version)
-	tm.Require().Equal(!tm.IsSuccess1, transaction[0].HasErrors)
-
-	tm.Require().Equal(tm.TrHash2, transaction[1].Hash)
-	tm.Require().Equal(tm.Time2, transaction[1].Epoch)
-
-	timeInt2, _ := strconv.Atoi(tm.Time2)
-	tm.Require().Equal(time.Unix(int64(timeInt2), 0), transaction[1].Time)
-
-	tm.Require().Equal(tm.Fee2, transaction[1].Fee[0].Text)
-	tm.Require().Equal("0.0.1", transaction[1].Version)
-	tm.Require().Equal(!tm.IsSuccess2, transaction[1].HasErrors)
+	expectedEvents := [][]utils.EventsResp{tm.Events[0][1:]}
+	utils.ValidateTransactions(&tm.Suite, *transactions[0], tm.Blocks[0], tm.Transactions[0], expectedEvents, tm.ChainID, tm.Currency, int32(tm.Exp))
 }
 
 func TestTransactionMapper(t *testing.T) {

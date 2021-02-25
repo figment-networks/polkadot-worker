@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -22,6 +23,8 @@ import (
 )
 
 var (
+	expDividers map[int]*big.Float
+
 	// ErrBadRequest is returned when cannot unmarshal message
 	ErrBadRequest = errors.New("bad request")
 
@@ -29,34 +32,45 @@ var (
 	getLatestDuration      *metrics.GroupObserver
 )
 
+func initExpDividers(maxPrecision int) {
+	expDividers = make(map[int]*big.Float)
+
+	for i := 0; i <= maxPrecision; i++ {
+		div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(i)), nil)
+		expDividers[i] = new(big.Float).SetFloat64(float64(div.Int64()))
+	}
+}
+
 // Client connecting to indexer-manager
 type Client struct {
 	chainID  string
 	currency string
+	exp      int
 	page     uint64
 	version  string
 
 	log   *zap.SugaredLogger
 	proxy proxy.ClientIface
-	tm    *mapper.TransactionMapper
 
 	sLock   sync.Mutex
 	streams map[uuid.UUID]*cStructs.StreamAccess
 }
 
 // NewClient is a indexer-manager Client constructor
-func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, page uint64, chainID, currency, version string) *Client {
+func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, page uint64, chainID, currency, version string) *Client {
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
+
+	initExpDividers(exp)
 
 	return &Client{
 		chainID:  chainID,
 		currency: currency,
+		exp:      exp,
 		page:     page,
 		version:  version,
 		log:      log,
 		proxy:    proxy,
-		tm:       mapper.New(log),
 		streams:  make(map[uuid.UUID]*cStructs.StreamAccess),
 	}
 }
@@ -350,25 +364,6 @@ func (c *Client) getRange(ctx context.Context, hr structs.HeightRange, out chan 
 	return nil
 }
 
-func (c *Client) wrapErrorsFromChan(errChan chan error) error {
-	var errors []error
-	for err := range errChan {
-		if err != nil {
-			errors = append(errors, err)
-		}
-	}
-
-	if len(errors) > 0 {
-		errStr := ""
-		for _, err := range errors {
-			errStr += err.Error() + " , "
-		}
-		return fmt.Errorf(fmt.Sprintf("Error while getting transactions: %s", errStr))
-	}
-
-	return nil
-}
-
 func (c *Client) getTransactionsWrapped(ctx context.Context, out chan cStructs.OutResp, height uint64, wg *sync.WaitGroup, err chan error) {
 	if transactions := c.getTransactions(ctx, out, height, err); transactions != nil {
 		for _, transaction := range transactions {
@@ -423,18 +418,31 @@ func (c *Client) getTransactions(ctx context.Context, out chan cStructs.OutResp,
 		return nil
 	}
 
-	if transactionMapped, e = c.tm.Parse(
-		block,
-		events,
-		transactions,
-		c.chainID,
-		c.currency,
-		c.version,
-	); e != nil {
+	if transactionMapped, e = mapper.TransactionsMapper(c.log, block, events, transactions,
+		c.exp, expDividers[c.exp], c.chainID, c.currency, c.version); e != nil {
 		err <- e
 		ctx.Done()
 		return nil
 	}
 
 	return
+}
+
+func (c *Client) wrapErrorsFromChan(errChan chan error) error {
+	var errors []error
+	for err := range errChan {
+		if err != nil {
+			errors = append(errors, err)
+		}
+	}
+
+	if len(errors) > 0 {
+		errStr := ""
+		for _, err := range errors {
+			errStr += err.Error() + " , "
+		}
+		return fmt.Errorf(fmt.Sprintf("Error while getting transactions: %s", errStr))
+	}
+
+	return nil
 }

@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -23,7 +25,6 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
-	"github.com/figment-networks/polkadothub-proxy/grpc/validator/validatorpb"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -60,7 +61,10 @@ func main() {
 }
 
 func getConfig() (cfg config.Config) {
-	file, err := ioutil.ReadFile("./../../config.json")
+	fptr := flag.String("config", "config.json", "path to config.json file")
+	flag.Parse()
+
+	file, err := ioutil.ReadFile(*fptr)
 	if err != nil {
 		fmt.Printf("Error while getting config file: %s\n", err.Error())
 		os.Exit(1)
@@ -85,11 +89,14 @@ func getLogger(logLevel string) (*zap.SugaredLogger, func() error) {
 		Level:       lvl,
 		OutputPaths: []string{"stderr"},
 		EncoderConfig: zapcore.EncoderConfig{
-			MessageKey:   "message",
-			LevelKey:     "level",
-			EncodeLevel:  zapcore.CapitalLevelEncoder,
-			TimeKey:      "time",
-			EncodeTime:   zapcore.RFC3339TimeEncoder,
+			MessageKey: "message",
+
+			LevelKey:    "level",
+			EncodeLevel: zapcore.CapitalLevelEncoder,
+
+			TimeKey:    "time",
+			EncodeTime: zapcore.RFC3339TimeEncoder,
+
 			CallerKey:    "caller",
 			EncodeCaller: zapcore.ShortCallerEncoder,
 		},
@@ -119,7 +126,6 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		blockpb.NewBlockServiceClient(conn),
 		eventpb.NewEventServiceClient(conn),
 		transactionpb.NewTransactionServiceClient(conn),
-		validatorpb.NewValidatorServiceClient(conn),
 	)
 
 	height := uint64(3727651)
@@ -134,19 +140,25 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		log.Error("Error while getting transactions", zap.Error(err))
 		return nil, nil
 	}
+	fmt.Println("transactions: ", transactions)
 
 	events, err := proxyClient.GetEventsByHeight(ctx, height)
 	if err != nil {
 		log.Error("Error while getting events", zap.Error(err))
 		return nil, nil
 	}
+	fmt.Println("events: ", events)
 
-	tm := mapper.New(log)
+	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(cfg.Worker.Exp)), nil)
+	divider := new(big.Float).SetFloat64(float64(div.Int64()))
 
-	result, err := tm.Parse(
+	result, err := mapper.TransactionsMapper(
+		log,
 		block,
 		events,
 		transactions,
+		cfg.Worker.Exp,
+		divider,
 		cfg.Worker.ChainID,
 		cfg.Worker.Currency,
 		cfg.Worker.Version,
@@ -170,6 +182,7 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 	return indexer.NewClient(
 		log,
 		proxyClient,
+		cfg.Worker.Exp,
 		cfg.IndexerManager.Page,
 		cfg.Worker.ChainID,
 		cfg.Worker.Currency,

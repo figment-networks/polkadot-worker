@@ -7,7 +7,6 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
-	"github.com/figment-networks/polkadothub-proxy/grpc/validator/validatorpb"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -18,7 +17,6 @@ type ClientIface interface {
 	GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error)
 	GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error)
 	GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error)
-	GetValidatorsByHeight(ctx context.Context, height uint64) (*validatorpb.GetAllByHeightResponse, error)
 }
 
 // Client connecting to polkadot-proxy
@@ -28,14 +26,12 @@ type Client struct {
 	blockClient       blockpb.BlockServiceClient
 	eventClient       eventpb.EventServiceClient
 	transactionClient transactionpb.TransactionServiceClient
-	validatorClient   validatorpb.ValidatorServiceClient
 }
 
 // NewClient is a polkadot-proxy Client constructor
-func NewClient(log *zap.SugaredLogger, bc blockpb.BlockServiceClient, ec eventpb.EventServiceClient,
-	tc transactionpb.TransactionServiceClient, vc validatorpb.ValidatorServiceClient) *Client {
+func NewClient(log *zap.SugaredLogger, bc blockpb.BlockServiceClient, ec eventpb.EventServiceClient, tc transactionpb.TransactionServiceClient) *Client {
 	initMetrics()
-	return &Client{log: log, blockClient: bc, eventClient: ec, transactionClient: tc, validatorClient: vc}
+	return &Client{log: log, blockClient: bc, eventClient: ec, transactionClient: tc}
 }
 
 func initMetrics() {
@@ -105,28 +101,6 @@ func (c *Client) GetTransactionsByHeight(ctx context.Context, height uint64) (*t
 	}
 
 	requestDuration.WithLabels("GetTransactionsByHeight", "OK").Observe(time.Since(now).Seconds())
-
-	return res, err
-}
-
-// GetValidatorsByHeight returns Validators by height
-func (c *Client) GetValidatorsByHeight(ctx context.Context, height uint64) (*validatorpb.GetAllByHeightResponse, error) {
-	req := &validatorpb.GetAllByHeightRequest{
-		Height: int64(height),
-	}
-
-	c.log.Debugf("Sending GetValidatorsByHeight height: %d", height)
-
-	now := time.Now()
-
-	res, err := c.validatorClient.GetAllByHeight(ctx, req)
-	if err != nil {
-		err = errors.Wrapf(err, "Error while getting validators by height: %d", height)
-		requestDuration.WithLabels("GetValidatorsByHeight", err.Error()).Observe(time.Since(now).Seconds())
-		return nil, err
-	}
-
-	requestDuration.WithLabels("GetValidatorsByHeight", "OK").Observe(time.Since(now).Seconds())
 
 	return res, err
 }
