@@ -123,7 +123,7 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 			e.senderAccountID, err = getAccountID(ev.Data[i])
 		case "to", "who":
 			e.recipientAccountID, err = getAccountID(ev.Data[i])
-		case "deposit", "free_balance", "value":
+		case "deposit", "free_balance", "value", "balance":
 			e.value, err = getBalance(ev.Data[i])
 		default:
 			log.Error("Unknown value to parse event", zap.String("event_value", v))
@@ -147,7 +147,8 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 func getValues(description string) ([]string, error) {
 	vls := string(regexp.MustCompile(`\\\[.*\\\]`).Find([]byte(description)))
 	if len(vls) < 5 {
-		return nil, fmt.Errorf("Could not get values from description %q", description)
+		// Arguments are not required in description
+		return nil, nil
 	}
 	vls = vls[2 : len(vls)-2]
 

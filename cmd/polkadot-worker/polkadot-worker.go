@@ -24,7 +24,6 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
-	"github.com/figment-networks/polkadothub-proxy/grpc/validator/validatorpb"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -126,7 +125,6 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		blockpb.NewBlockServiceClient(conn),
 		eventpb.NewEventServiceClient(conn),
 		transactionpb.NewTransactionServiceClient(conn),
-		validatorpb.NewValidatorServiceClient(conn),
 	)
 
 	height := uint64(3727651)

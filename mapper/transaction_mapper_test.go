@@ -39,6 +39,11 @@ type TransactionMapperTest struct {
 	TrIndex1, TrIndex2     int64
 	Version                string
 
+	additional  [][]string
+	accountID   string
+	senderID    string
+	recipientID string
+
 	BlockRes       *blockpb.GetByHeightResponse
 	EventRes       *eventpb.GetByHeightResponse
 	TransactionRes *transactionpb.GetByHeightResponse
@@ -145,11 +150,14 @@ func (tm *TransactionMapperTest) SetupTest() {
 	tm.BlockRes = utils.BlockResponse(tm.Height, tm.BlockHash, nil)
 	tm.EventRes = utils.EventResponse(tm.EventValues)
 
-	tr1 := utils.TransactionResponse(tm.TrIndex1, tm.Nonce1, tm.IsSuccess1, tm.Args1, tm.Fee1, tm.TrHash1, tm.Method1, tm.Section1, tm.Tip1, strconv.Itoa(int(tm.Time1.Unix())))
-	tr2 := utils.TransactionResponse(tm.TrIndex2, tm.Nonce2, tm.IsSuccess2, tm.Args2, tm.Fee2, tm.TrHash2, tm.Method2, tm.Section2, tm.Tip2, strconv.Itoa(int(tm.Time2.Unix())))
-
 	tm.TransactionRes = &transactionpb.GetByHeightResponse{
-		Transactions: append(append(tr1.Transactions, tr1.Transactions...), tr2.Transactions...),
+		Transactions: append(utils.TransactionResponse(
+			tm.TrIndex1, tm.Nonce1, tm.IsSuccess1, tm.Args1, tm.Fee1, tm.TrHash1,
+			tm.Method1, tm.Section1, tm.Tip1, strconv.Itoa(int(tm.Time1.Unix())),
+		).Transactions, utils.TransactionResponse(
+			tm.TrIndex2, tm.Nonce2, tm.IsSuccess2, tm.Args2, tm.Fee2, tm.TrHash2,
+			tm.Method2, tm.Section2, tm.Tip2, strconv.Itoa(int(tm.Time2.Unix())),
+		).Transactions...),
 	}
 
 	conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
@@ -232,24 +240,40 @@ func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
 	for _, tr := range transactions {
 		switch tr.Hash {
 		case tm.TrHash1:
-			// additional1 := []string{`name:"AccountId" value:"12QVNbQdKKGM1ahx62TPAhc2Gy3G2i8UuizPES3Do1azeDVk"`, `name:"Balance" value:"155000000"`}
-			accountID := ""
-			senderID := ""
-			recipientID := "12QVNbQdKKGM1ahx62TPAhc2Gy3G2i8UuizPES3Do1azeDVk"
-			utils.ValidateTransaction(&tm.Suite, *tr, tm.Time1, []utils.EventValues{tm.EventValues[1]}, nil, tm.Exp,
-				uint64(tm.Height), tm.IsSuccess1, tm.BlockHash, tm.ChainID, tm.Currency, tm.TrHash1, tm.Fee1, "0.000000001DOT", "155000000", "0.000155DOT", accountID, senderID, recipientID)
+			tm.additional = [][]string{{
+				`name:"AccountId"`, `value:"12QVNbQdKKGM1ahx62TPAhc2Gy3G2i8UuizPES3Do1azeDVk"`,
+			}, {
+				`name:"Balance"`, `value:"155000000"`,
+			}}
+			tm.accountID = ""
+			tm.senderID = ""
+			tm.recipientID = "12QVNbQdKKGM1ahx62TPAhc2Gy3G2i8UuizPES3Do1azeDVk"
+			utils.ValidateTransaction(&tm.Suite, *tr, tm.Time1, []utils.EventValues{tm.EventValues[1]}, tm.additional, tm.Exp,
+				uint64(tm.Height), tm.IsSuccess1, tm.BlockHash, tm.ChainID, tm.Currency, tm.TrHash1, tm.Fee1, "0.000000001DOT", "155000000", "0.000155DOT", tm.accountID, tm.senderID, tm.recipientID)
 
 		case tm.TrHash2:
-			// additional2 := []string{`name:"DispatchError" value:"{\"Module\":{\"index\":5,\"error\":4}}"`, `name:"DispatchInfo" value:"{\"weight\":218434000,\"class\":\"Normal\",\"paysFee\":\"Yes\"}"`}
-			accountID := "1435nBEPwxroPqR2CupS43mP2iVDckz16NEokXRT2j1bE8tH"
-			senderID := "13SqN5TdZNtpYYyynfWvXBWetnYfTS4TTM63sVpRm8nsvcwe"
-			recipientID := "1435nBEPwxroPqR2CupS43mP2iVDckz16NEokXRT2j1bE8tH"
-			utils.ValidateTransaction(&tm.Suite, *tr, tm.Time2, tm.EventValues[2:], nil, tm.Exp,
-				uint64(tm.Height), tm.IsSuccess2, tm.BlockHash, tm.ChainID, tm.Currency, tm.TrHash2, "3000", "0.000000003DOT", "50000000000", "0.05DOT", accountID, senderID, recipientID)
+			// tm.additional = [][]string{{
+			// 	`name:"AccountId"`, `value:"1435nBEPwxroPqR2CupS43mP2iVDckz16NEokXRT2j1bE8tH"`,
+			// }, {
+			// 	`name:"DispatchError"`, `value:"{\"Module\":{\"index\":5,\"error\":4}}"`,
+			// }, {
+			// 	`name:"DispatchInfo"`, `value:"{\"weight\":218434000,\"class\":\"Normal\",\"paysFee\":\"Yes\"}"`,
+			// }}
+			// tm.accountID = "1435nBEPwxroPqR2CupS43mP2iVDckz16NEokXRT2j1bE8tH"
+			// tm.senderID = "13SqN5TdZNtpYYyynfWvXBWetnYfTS4TTM63sVpRm8nsvcwe"
+			// tm.recipientID = "1435nBEPwxroPqR2CupS43mP2iVDckz16NEokXRT2j1bE8tH"
+			// utils.ValidateTransaction(&tm.Suite, *tr, tm.Time2, tm.EventValues[2:], tm.additional, tm.Exp,
+			// 	uint64(tm.Height), tm.IsSuccess2, tm.BlockHash, tm.ChainID, tm.Currency, tm.TrHash2, "3000", "0.000000003DOT", "50000000000", "0.05DOT", tm.accountID, tm.senderID, tm.recipientID)
 		}
 	}
 
 }
+
+// {
+// 	`name:"DispatchError"`, `value:"{\"Module\":{\"index\":5,\"error\":4}}"`,
+// }, {
+// 	`name:"DispatchInfo"`, `value:"{\"weight\":218434000,\"class\":\"Normal\",\"paysFee\":\"Yes\"}"`,
+// }
 
 func TestTransactionMapper(t *testing.T) {
 	suite.Run(t, new(TransactionMapperTest))
