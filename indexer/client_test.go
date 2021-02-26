@@ -7,13 +7,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadot-worker/indexer"
 	"github.com/figment-networks/polkadot-worker/proxy"
 	"github.com/figment-networks/polkadot-worker/utils"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
-	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"

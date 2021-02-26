@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/proxy"
 
@@ -27,9 +26,6 @@ var (
 
 	// ErrBadRequest is returned when cannot unmarshal message
 	ErrBadRequest = errors.New("bad request")
-
-	getTransactionDuration *metrics.GroupObserver
-	getLatestDuration      *metrics.GroupObserver
 )
 
 func initExpDividers(maxPrecision int) {
@@ -58,9 +54,6 @@ type Client struct {
 
 // NewClient is a indexer-manager Client constructor
 func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, page uint64, chainID, currency, version string) *Client {
-	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
-	getLatestDuration = endpointDuration.WithLabels("getLatest")
-
 	initExpDividers(exp)
 
 	return &Client{
@@ -138,9 +131,6 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 
 // GetLatest returns latest Block's Transactions
 func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream *cStructs.StreamAccess) {
-	timer := metrics.NewTimer(getLatestDuration)
-	defer timer.ObserveDuration()
-
 	var ldr structs.LatestDataRequest
 	var err error
 
@@ -201,9 +191,6 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 
 // GetTransactions returns Transactions with given range
 func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, stream *cStructs.StreamAccess) {
-	timer := metrics.NewTimer(getTransactionDuration)
-	defer timer.ObserveDuration()
-
 	var hr structs.HeightRange
 	var err error
 
