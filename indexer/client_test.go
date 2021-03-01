@@ -67,7 +67,7 @@ func (ic *IndexerClientTest) SetupTest() {
 
 	proxyClientMock := proxyClientMock{}
 
-	ic.Client = indexer.NewClient(log.Sugar(), &proxyClientMock, ic.Exp, 321, ic.ChainID, ic.Currency, ic.Version)
+	ic.Client = indexer.NewClient(log.Sugar(), &proxyClientMock, ic.Exp, ic.ChainID, ic.Currency, ic.Version)
 	ic.ProxyClient = &proxyClientMock
 }
 

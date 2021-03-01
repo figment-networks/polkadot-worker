@@ -46,7 +46,6 @@ type Client struct {
 	chainID  string
 	currency string
 	exp      int
-	page     uint64
 	version  string
 
 	log   *zap.SugaredLogger
@@ -57,7 +56,7 @@ type Client struct {
 }
 
 // NewClient is a indexer-manager Client constructor
-func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, page uint64, chainID, currency, version string) *Client {
+func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, chainID, currency, version string) *Client {
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
 
@@ -67,7 +66,6 @@ func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, page ui
 		chainID:  chainID,
 		currency: currency,
 		exp:      exp,
-		page:     page,
 		version:  version,
 		log:      log,
 		proxy:    proxy,
@@ -162,7 +160,7 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	out := make(chan cStructs.OutResp, c.page)
+	out := make(chan cStructs.OutResp, 3)
 	fin := make(chan bool, 2)
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
@@ -242,7 +240,7 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	out := make(chan cStructs.OutResp, c.page)
+	out := make(chan cStructs.OutResp, hr.EndHeight-hr.StartHeight+1)
 	fin := make(chan bool, 1)
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)

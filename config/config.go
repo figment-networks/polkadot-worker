@@ -2,9 +2,9 @@ package config
 
 // Config struct for config.yml
 type Config struct {
-	Worker         WorkerConfig
-	ProxyBaseURL   string               `json:"proxy_base_url"`
-	IndexerManager IndexerManagerConfig `json:"indexer_manager"`
+	Worker                WorkerConfig
+	ProxyBaseURL          string `json:"proxy_base_url"`
+	IndexerManagerBaseURL string `json:"indexer_manager_base_url"`
 }
 
 // WorkerConfig config
@@ -22,10 +22,4 @@ type WorkerConfig struct {
 type WorkerAddress struct {
 	Host string `json:"host"`
 	Port string `json:"port"`
-}
-
-// IndexerManagerConfig url and page size
-type IndexerManagerConfig struct {
-	BaseURL string `json:"base_url"`
-	Page    uint64
 }

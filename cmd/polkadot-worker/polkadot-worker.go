@@ -130,7 +130,6 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		log,
 		proxyClient,
 		cfg.Worker.Exp,
-		cfg.IndexerManager.Page,
 		cfg.Worker.ChainID,
 		cfg.Worker.Currency,
 		cfg.Worker.Version,
@@ -147,7 +146,7 @@ func registerWorker(ctx context.Context, log *zap.SugaredLogger, cfg *config.Con
 
 	c := connectivity.NewWorkerConnections(workerRunID.String(), workerAddress, cfg.Worker.Network, cfg.Worker.ChainID, "0.0.1")
 
-	c.AddManager(cfg.IndexerManager.BaseURL + "/client_ping")
+	c.AddManager(cfg.IndexerManagerBaseURL + "/client_ping")
 
 	go c.Run(ctx, log.Desugar(), 10*time.Second)
 }
