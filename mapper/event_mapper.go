@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const DESCRIPTION_ARGS = `\\\[.*\\\]`
+var descRegexp = regexp.MustCompile(`\\\[.*\\\]`)
 
 func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, currency string, divider *big.Float, exp int) (eventMap, error) {
 	evIndexMap := make(map[int64]struct{})
@@ -39,7 +39,7 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 		}
 
 		events[e.ExtrinsicIndex] = append(events[e.ExtrinsicIndex], structs.TransactionEvent{
-			ID:   strconv.Itoa(int(e.Index)),
+			ID:   strconv.FormatInt(e.Index, 10),
 			Kind: kind,
 			Sub:  []structs.SubsetEvent{event},
 		})
@@ -64,6 +64,7 @@ type event struct {
 	recipientAccountID string
 	senderAccountID    string
 	value              string
+	amount             structs.TransactionAmount
 
 	currency  string
 	eventType []string
@@ -81,17 +82,14 @@ func getEvent(log *zap.SugaredLogger, evpb *eventpb.Event, currency string, exp 
 		return structs.SubsetEvent{}, err
 	}
 
-	e.appendAccounts()
 	e.appendAmount(amount)
-	e.appendSender(amount)
-	e.appendRecipient(amount)
+	e.appendAccounts()
 
 	e.Module = evpb.Section
 
+	e.Type = []string{evpb.Method}
 	if e.eventType != nil {
-		e.Type = e.eventType
-	} else {
-		e.Type = []string{evpb.Method}
+		e.Type = append(e.Type, e.eventType...)
 	}
 
 	if evpb.Error != "" {
@@ -131,7 +129,6 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 		case "deposit", "free_balance", "value", "balance":
 			e.value, err = getBalance(ev.Data[i])
 		default:
-			log.Error("Unknown value to parse event", zap.String("event_value", v))
 			return fmt.Errorf("Unknown value to parse event %q", v)
 		}
 
@@ -147,7 +144,7 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 }
 
 func getValues(description string) ([]string, error) {
-	vls := string(regexp.MustCompile(DESCRIPTION_ARGS).Find([]byte(description)))
+	vls := string(descRegexp.Find([]byte(description)))
 	if len(vls) < 5 {
 		// Arguments are not required in description
 		return nil, nil
@@ -207,6 +204,8 @@ func (e *event) appendAmount(amount *structs.TransactionAmount) {
 		return
 	}
 
+	e.amount = *amount
+
 	e.Amount = make(map[string]structs.TransactionAmount)
 	e.Amount["0"] = *amount
 }
@@ -216,30 +215,19 @@ func (e *event) appendAccounts() {
 		return
 	}
 
-	node := make(map[string][]structs.Account)
+	e.Node = make(map[string][]structs.Account)
 
 	if e.accountID != "" {
-		node["versions"] = []structs.Account{{
+		e.Node["versions"] = []structs.Account{{
 			ID: e.accountID,
 		}}
 	}
 
-	if e.senderAccountID != "" {
-		node["sender"] = []structs.Account{{
-			ID: e.senderAccountID,
-		}}
-	}
-
-	if e.recipientAccountID != "" {
-		node["recipient"] = []structs.Account{{
-			ID: e.recipientAccountID,
-		}}
-	}
-
-	e.Node = node
+	e.appendSender()
+	e.appendRecipient()
 }
 
-func (e *event) appendSender(amount *structs.TransactionAmount) {
+func (e *event) appendSender() {
 	if e.senderAccountID == "" {
 		return
 	}
@@ -250,15 +238,19 @@ func (e *event) appendSender(amount *structs.TransactionAmount) {
 
 	eventTransfer := structs.EventTransfer{
 		Account: account,
-		Amounts: []structs.TransactionAmount{*amount},
+		Amounts: []structs.TransactionAmount{e.amount},
 	}
 
 	e.Sender = []structs.EventTransfer{
 		eventTransfer,
 	}
+
+	e.Node["sender"] = []structs.Account{
+		account,
+	}
 }
 
-func (e *event) appendRecipient(amount *structs.TransactionAmount) {
+func (e *event) appendRecipient() {
 	if e.recipientAccountID == "" {
 		return
 	}
@@ -269,11 +261,15 @@ func (e *event) appendRecipient(amount *structs.TransactionAmount) {
 
 	eventTransfer := structs.EventTransfer{
 		Account: account,
-		Amounts: []structs.TransactionAmount{*amount},
+		Amounts: []structs.TransactionAmount{e.amount},
 	}
 
 	e.Recipient = []structs.EventTransfer{
 		eventTransfer,
+	}
+
+	e.Node["recipient"] = []structs.Account{
+		account,
 	}
 
 	transfers := make(map[string][]structs.EventTransfer)

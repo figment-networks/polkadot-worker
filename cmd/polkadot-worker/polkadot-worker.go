@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/figment-networks/polkadot-worker/config"
 	"github.com/figment-networks/polkadot-worker/indexer"
-	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/proxy"
 
 	"github.com/figment-networks/indexer-manager/worker/connectivity"
@@ -127,57 +125,6 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		eventpb.NewEventServiceClient(conn),
 		transactionpb.NewTransactionServiceClient(conn),
 	)
-
-	height := uint64(3727651)
-	block, err := proxyClient.GetBlockByHeight(ctx, height)
-	if err != nil {
-		log.Error("Error while getting block", zap.Error(err))
-		return nil, nil
-	}
-
-	transactions, err := proxyClient.GetTransactionsByHeight(ctx, height)
-	if err != nil {
-		log.Error("Error while getting transactions", zap.Error(err))
-		return nil, nil
-	}
-	fmt.Println("transactions: ", transactions)
-
-	events, err := proxyClient.GetEventsByHeight(ctx, height)
-	if err != nil {
-		log.Error("Error while getting events", zap.Error(err))
-		return nil, nil
-	}
-	fmt.Println("events: ", events)
-
-	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(cfg.Worker.Exp)), nil)
-	divider := new(big.Float).SetFloat64(float64(div.Int64()))
-
-	result, err := mapper.TransactionsMapper(
-		log,
-		block,
-		events,
-		transactions,
-		cfg.Worker.Exp,
-		divider,
-		cfg.Worker.ChainID,
-		cfg.Worker.Currency,
-		cfg.Worker.Version,
-	)
-	if err != nil {
-		log.Error("Error mapping transaction", zap.Error(err))
-		return nil, nil
-	}
-	for i, r := range result {
-		fmt.Println("height:", r.Height)
-		fmt.Printf("result %i:\n\n%3v\n\n%#v\n\n", i, r, r)
-		for _, ee := range r.Events {
-			for _, e := range ee.Sub {
-				if e.Error != nil {
-					fmt.Println("errormsg: ", e.Error.Message)
-				}
-			}
-		}
-	}
 
 	return indexer.NewClient(
 		log,
