@@ -15,8 +15,8 @@ import (
 // ClientIface interface
 type ClientIface interface {
 	GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error)
-	GetEventByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error)
-	GetTransactionByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error)
+	GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error)
+	GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error)
 }
 
 // Client connecting to polkadot-proxy
@@ -61,46 +61,46 @@ func (c *Client) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.
 	return res, err
 }
 
-// GetEventByHeight returns Event by height
-func (c *Client) GetEventByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error) {
+// GetEventsByHeight returns Event by height
+func (c *Client) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error) {
 	req := &eventpb.GetByHeightRequest{
 		Height: int64(height),
 	}
 
-	c.log.Debugf("Sending GetEventByHeight height: %d", height)
+	c.log.Debugf("Sending GetEventsByHeight height: %d", height)
 
 	now := time.Now()
 
 	res, err := c.eventClient.GetByHeight(ctx, req)
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting event by height: %d", height)
-		requestDuration.WithLabels("GetEventByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		requestDuration.WithLabels("GetEventsByHeight", err.Error()).Observe(time.Since(now).Seconds())
 		return nil, err
 	}
 
-	requestDuration.WithLabels("GetEventByHeight", "OK").Observe(time.Since(now).Seconds())
+	requestDuration.WithLabels("GetEventsByHeight", "OK").Observe(time.Since(now).Seconds())
 
 	return res, err
 }
 
-// GetTransactionByHeight returns Transaction by height
-func (c *Client) GetTransactionByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error) {
+// GetTransactionsByHeight returns Transaction by height
+func (c *Client) GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error) {
 	req := &transactionpb.GetByHeightRequest{
 		Height: int64(height),
 	}
 
-	c.log.Debugf("Sending GetTransactionByHeight height: %d", height)
+	c.log.Debugf("Sending GetTransactionsByHeight height: %d", height)
 
 	now := time.Now()
 
 	res, err := c.transactionClient.GetByHeight(ctx, req)
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting transaction by height: %d", height)
-		requestDuration.WithLabels("GetTransactionByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		requestDuration.WithLabels("GetTransactionsByHeight", err.Error()).Observe(time.Since(now).Seconds())
 		return nil, err
 	}
 
-	requestDuration.WithLabels("GetTransactionByHeight", "OK").Observe(time.Since(now).Seconds())
+	requestDuration.WithLabels("GetTransactionsByHeight", "OK").Observe(time.Since(now).Seconds())
 
 	return res, err
 }

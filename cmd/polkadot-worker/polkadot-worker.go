@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -46,19 +47,22 @@ func main() {
 
 	grpcProtoIndexer.RegisterIndexerServiceServer(grpcServer, indexer)
 
-	lis, err := net.Listen("tcp", cfg.Worker.Address.Host+cfg.Worker.Address.Port)
+	lis, err := net.Listen("tcp", cfg.Worker.Address.Host+cfg.Worker.Address.GRCPPort)
 	if err != nil {
-		log.Errorf("Error while listening on %s port", cfg.PolkadotClientBaseURL, zap.Error(err))
+		log.Errorf("Error while listening on port %s %s", cfg.Worker.Address.GRCPPort, zap.Error(err))
 		return
 	}
 
 	go handleHTTP(log, &cfg)
 
-	serveGRPC(log, grpcServer, lis, cfg.PolkadotClientBaseURL)
+	serveGRPC(log, grpcServer, lis, cfg.ProxyBaseURL)
 }
 
 func getConfig() (cfg config.Config) {
-	file, err := ioutil.ReadFile("./../../config.json")
+	fptr := flag.String("config", "config.json", "path to config.json file")
+	flag.Parse()
+
+	file, err := ioutil.ReadFile(*fptr)
 	if err != nil {
 		fmt.Printf("Error while getting config file: %s\n", err.Error())
 		os.Exit(1)
@@ -83,11 +87,14 @@ func getLogger(logLevel string) (*zap.SugaredLogger, func() error) {
 		Level:       lvl,
 		OutputPaths: []string{"stderr"},
 		EncoderConfig: zapcore.EncoderConfig{
-			MessageKey:   "message",
-			LevelKey:     "level",
-			EncodeLevel:  zapcore.CapitalLevelEncoder,
-			TimeKey:      "time",
-			EncodeTime:   zapcore.RFC3339TimeEncoder,
+			MessageKey: "message",
+
+			LevelKey:    "level",
+			EncodeLevel: zapcore.CapitalLevelEncoder,
+
+			TimeKey:    "time",
+			EncodeTime: zapcore.RFC3339TimeEncoder,
+
 			CallerKey:    "caller",
 			EncodeCaller: zapcore.ShortCallerEncoder,
 		},
@@ -104,7 +111,7 @@ func getLogger(logLevel string) (*zap.SugaredLogger, func() error) {
 func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *config.Config) (*indexer.Client, func() error) {
 	conn, err := grpc.DialContext(
 		ctx,
-		cfg.PolkadotClientBaseURL,
+		cfg.ProxyBaseURL,
 		grpc.WithInsecure(),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 	)
@@ -120,10 +127,12 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 	)
 
 	return indexer.NewClient(
-		cfg.Worker.ChainID,
 		log,
-		cfg.IndexerManager.Page,
 		proxyClient,
+		cfg.Worker.Exp,
+		cfg.Worker.ChainID,
+		cfg.Worker.Currency,
+		cfg.Worker.Version,
 	), conn.Close
 }
 
@@ -133,11 +142,11 @@ func registerWorker(ctx context.Context, log *zap.SugaredLogger, cfg *config.Con
 		log.Errorf("Error while creating new random id for polkadot-worker: %s", err.Error())
 	}
 
-	workerAddress := cfg.Worker.Address.Host + cfg.Worker.Address.Port
+	workerAddress := cfg.Worker.Address.Host + cfg.Worker.Address.GRCPPort
 
 	c := connectivity.NewWorkerConnections(workerRunID.String(), workerAddress, cfg.Worker.Network, cfg.Worker.ChainID, "0.0.1")
 
-	c.AddManager(cfg.IndexerManager.BaseURL + "/client_ping")
+	c.AddManager(cfg.IndexerManagerBaseURL + "/client_ping")
 
 	go c.Run(ctx, log.Desugar(), 10*time.Second)
 }
@@ -156,16 +165,16 @@ func handleHTTP(log *zap.SugaredLogger, cfg *config.Config) {
 	mux.Handle("/metrics", metrics.Handler())
 
 	s := &http.Server{
-		Addr:         cfg.Worker.Address.Host + cfg.Worker.Address.Port,
+		Addr:         cfg.Worker.Address.Host + cfg.Worker.Address.HTTPPort,
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
 
-	log.Infof("HTTP handler listening on port %s", cfg.Worker.Address.Port)
+	log.Infof("HTTP handler listening on port %s", cfg.Worker.Address.HTTPPort)
 
 	if err := s.ListenAndServe(); err != nil {
-		log.Error("Error while listening on %s port", cfg.Worker.Address.Port, zap.Error(err))
+		log.Error("Error while listening on %s port", cfg.Worker.Address.HTTPPort, zap.Error(err))
 	}
 }
 

@@ -31,26 +31,32 @@ var (
 
 // Client connecting to indexer-manager
 type Client struct {
-	sLock   sync.Mutex
-	streams map[uuid.UUID]*cStructs.StreamAccess
+	chainID  string
+	currency string
+	exp      int
+	version  string
 
-	chainID string
-	log     *zap.SugaredLogger
-	page    uint64
-	proxy   proxy.ClientIface
+	log      *zap.SugaredLogger
+	proxy    proxy.ClientIface
+	sLock    sync.Mutex
+	streams  map[uuid.UUID]*cStructs.StreamAccess
+	trMapper *mapper.TransactionMapper
 }
 
 // NewClient is a indexer-manager Client constructor
-func NewClient(chainID string, log *zap.SugaredLogger, page uint64, proxy proxy.ClientIface) *Client {
+func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, chainID, currency, version string) *Client {
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
 
 	return &Client{
-		chainID: chainID,
-		log:     log,
-		page:    page,
-		proxy:   proxy,
-		streams: make(map[uuid.UUID]*cStructs.StreamAccess),
+		chainID:  chainID,
+		currency: currency,
+		exp:      exp,
+		version:  version,
+		log:      log,
+		proxy:    proxy,
+		streams:  make(map[uuid.UUID]*cStructs.StreamAccess),
+		trMapper: mapper.New(exp, chainID, currency, version),
 	}
 }
 
@@ -104,8 +110,10 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 				c.GetLatest(ctxWithTimeout, taskRequest, stream)
 			default:
 				stream.Send(cStructs.TaskResponse{
-					Id:    taskRequest.Id,
-					Error: cStructs.TaskError{Msg: fmt.Sprintf("Unknown request %s", taskRequest.Type)},
+					Id: taskRequest.Id,
+					Error: cStructs.TaskError{
+						Msg: fmt.Sprintf("Unknown request %s", taskRequest.Type),
+					},
 					Final: true,
 				})
 			}
@@ -127,8 +135,10 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 
 	if err != nil {
 		stream.Send(cStructs.TaskResponse{
-			Id:    tr.Id,
-			Error: cStructs.TaskError{Msg: fmt.Sprintf("Cannot unmarshal payload: %s", err.Error())},
+			Id: tr.Id,
+			Error: cStructs.TaskError{
+				Msg: fmt.Sprintf("Cannot unmarshal payload: %s", err.Error()),
+			},
 			Final: true,
 		})
 		return
@@ -137,25 +147,12 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errChan := make(chan error, 1)
-	out := make(chan cStructs.OutResp, c.page)
+	out := make(chan cStructs.OutResp, 3)
 	fin := make(chan bool, 2)
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
-	c.getTransactionsWrapped(ctx, out, ldr.LastHeight, nil, errChan)
-
-	close(errChan)
-
-	if err := c.wrapErrorsFromChan(errChan); err != nil {
-		stream.Send(cStructs.TaskResponse{
-			Id:    tr.Id,
-			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch latest transactions: %s", err.Error())},
-			Final: true,
-		})
-		close(out)
-		return
-	}
+	c.sendLatest(ctx, out, stream, ldr.LastHeight, tr.Id)
 
 	c.log.Debug("Received all", zap.Stringer("taskID", tr.Id))
 	close(out)
@@ -169,6 +166,25 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 			c.log.Debug("Finished sending all", zap.Stringer("taskID", tr.Id))
 			return
 		}
+	}
+}
+
+func (c *Client) sendLatest(ctx context.Context, out chan cStructs.OutResp, stream *cStructs.StreamAccess, height uint64, taskId uuid.UUID) {
+	errChan := make(chan error, 1)
+
+	c.sendTransactionsByHeight(ctx, out, height, nil, errChan)
+
+	close(errChan)
+
+	if err := c.wrapErrorsFromChan(errChan); err != nil {
+		stream.Send(cStructs.TaskResponse{
+			Id: taskId,
+			Error: cStructs.TaskError{
+				Msg: fmt.Sprintf("Could not fetch latest transactions: %s", err.Error()),
+			},
+			Final: true,
+		})
+		return
 	}
 }
 
@@ -187,8 +203,22 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 	if err != nil {
 		c.log.Debug("Cannot unmarshal payload", zap.String("contents", string(tr.Payload)))
 		stream.Send(cStructs.TaskResponse{
-			Id:    tr.Id,
-			Error: cStructs.TaskError{Msg: fmt.Sprintf("Cannot unmarshal payload: %s", err.Error())},
+			Id: tr.Id,
+			Error: cStructs.TaskError{
+				Msg: fmt.Sprintf("Cannot unmarshal payload: %s", err.Error()),
+			},
+			Final: true,
+		})
+		return
+	}
+
+	if hr.StartHeight > hr.EndHeight {
+		c.log.Debug("Cannot unmarshal payload", zap.String("contents", string(tr.Payload)))
+		stream.Send(cStructs.TaskResponse{
+			Id: tr.Id,
+			Error: cStructs.TaskError{
+				Msg: "Bad range, start height is too high",
+			},
 			Final: true,
 		})
 		return
@@ -197,35 +227,21 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	out := make(chan cStructs.OutResp, c.page)
+	out := make(chan cStructs.OutResp, hr.EndHeight-hr.StartHeight+1)
 	fin := make(chan bool, 1)
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
-	var i uint64
-	for {
-		hrInerr := structs.HeightRange{
-			StartHeight: hr.StartHeight + i*c.page,
-			EndHeight:   hr.StartHeight + i*c.page + c.page - 1,
-		}
-
-		if hrInerr.EndHeight > hr.EndHeight {
-			hrInerr.EndHeight = hr.EndHeight
-		}
-
-		if err := c.getRange(ctx, hrInerr, out); err != nil {
-			stream.Send(cStructs.TaskResponse{
-				Id:    tr.Id,
-				Error: cStructs.TaskError{Msg: fmt.Sprintf("Error while getting Transactions with given range: %s", err.Error())},
-				Final: true,
-			})
-			break
-		}
-
-		i++
-		if hrInerr.EndHeight == hr.EndHeight {
-			break
-		}
+	if err := c.sendTransactionsInRange(ctx, hr, out); err != nil {
+		stream.Send(cStructs.TaskResponse{
+			Id: tr.Id,
+			Error: cStructs.TaskError{
+				Msg: fmt.Sprintf("Error while getting Transactions with given range: %s", err.Error()),
+			},
+			Final: true,
+		})
+		close(out)
+		return
 	}
 
 	c.log.Debug("Received all", zap.Stringer("taskID", tr.Id))
@@ -301,7 +317,7 @@ func (c *Client) sendResp(id uuid.UUID, taskType string, payload interface{}, or
 	}
 }
 
-func (c *Client) getRange(ctx context.Context, hr structs.HeightRange, out chan cStructs.OutResp) error {
+func (c *Client) sendTransactionsInRange(ctx context.Context, hr structs.HeightRange, out chan cStructs.OutResp) error {
 	var wg sync.WaitGroup
 	actualHeight := hr.StartHeight
 
@@ -312,9 +328,9 @@ func (c *Client) getRange(ctx context.Context, hr structs.HeightRange, out chan 
 	errChan := make(chan error, count)
 
 	for {
-		c.log.Debug("Getting transactions", zap.Uint64("height", actualHeight))
+		c.log.Debug("Sending transactions", zap.Uint64("height", actualHeight))
 
-		c.getTransactionsWrapped(ctx, out, actualHeight, &wg, errChan)
+		c.sendTransactionsByHeight(ctx, out, actualHeight, &wg, errChan)
 
 		if actualHeight == hr.EndHeight {
 			break
@@ -331,6 +347,69 @@ func (c *Client) getRange(ctx context.Context, hr structs.HeightRange, out chan 
 	}
 
 	return nil
+}
+
+func (c *Client) sendTransactionsByHeight(ctx context.Context, out chan cStructs.OutResp, height uint64, wg *sync.WaitGroup, err chan error) {
+	if transactions := c.getTransactions(ctx, out, height, err); transactions != nil {
+		for _, transaction := range transactions {
+			t := *transaction
+			out <- cStructs.OutResp{
+				Type:    "Transaction",
+				Payload: t,
+			}
+		}
+	}
+	if wg != nil {
+		wg.Done()
+	}
+}
+
+func (c *Client) getTransactions(ctx context.Context, out chan cStructs.OutResp, height uint64, err chan error) (transactionMapped []*structs.Transaction) {
+	block, e := c.proxy.GetBlockByHeight(ctx, height)
+	if e != nil {
+		err <- e
+		ctx.Done()
+		return nil
+	}
+
+	transactions, e := c.proxy.GetTransactionsByHeight(ctx, height)
+	if e != nil {
+		err <- e
+		ctx.Done()
+		return nil
+	}
+
+	if transactions == nil {
+		out <- cStructs.OutResp{
+			Type:    "Block",
+			Payload: mapper.BlockMapper(block, c.chainID, 0),
+		}
+		return nil
+	}
+
+	out <- cStructs.OutResp{
+		Type: "Block",
+		Payload: mapper.BlockMapper(
+			block,
+			c.chainID,
+			uint64(len(transactions.Transactions)),
+		),
+	}
+
+	events, e := c.proxy.GetEventsByHeight(ctx, height)
+	if e != nil {
+		err <- e
+		ctx.Done()
+		return nil
+	}
+
+	if transactionMapped, e = c.trMapper.TransactionsMapper(c.log, block, events, transactions); e != nil {
+		err <- e
+		ctx.Done()
+		return nil
+	}
+
+	return
 }
 
 func (c *Client) wrapErrorsFromChan(errChan chan error) error {
@@ -350,64 +429,4 @@ func (c *Client) wrapErrorsFromChan(errChan chan error) error {
 	}
 
 	return nil
-}
-
-func (c *Client) getTransactionsWrapped(ctx context.Context, out chan cStructs.OutResp, height uint64, wg *sync.WaitGroup, err chan error) {
-	if transactions := c.getTransactions(ctx, out, height, err); transactions != nil {
-		for _, transaction := range transactions {
-			t := *transaction
-			out <- cStructs.OutResp{
-				Type:    "Transaction",
-				Payload: t,
-			}
-		}
-	}
-	if wg != nil {
-		wg.Done()
-	}
-}
-
-func (c *Client) getTransactions(ctx context.Context, out chan cStructs.OutResp, height uint64, err chan error) []*structs.Transaction {
-	block, e := c.proxy.GetBlockByHeight(ctx, height)
-	if e != nil {
-		err <- e
-		ctx.Done()
-		return nil
-	}
-
-	transactions, e := c.proxy.GetTransactionByHeight(ctx, height)
-	if e != nil {
-		err <- e
-		ctx.Done()
-		return nil
-	}
-
-	if transactions == nil {
-		out <- cStructs.OutResp{
-			Type:    "Block",
-			Payload: mapper.BlockMapper(block, c.chainID, 0),
-		}
-		return nil
-	}
-
-	out <- cStructs.OutResp{
-		Type:    "Block",
-		Payload: mapper.BlockMapper(block, c.chainID, uint64(len(transactions.Transactions))),
-	}
-
-	events, e := c.proxy.GetEventByHeight(ctx, height)
-	if e != nil {
-		err <- e
-		ctx.Done()
-		return nil
-	}
-
-	transactionMapped, e := mapper.TransactionMapper(block, c.chainID, events, transactions)
-	if e != nil {
-		err <- e
-		ctx.Done()
-		return nil
-	}
-
-	return transactionMapped
 }

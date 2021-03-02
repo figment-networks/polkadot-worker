@@ -5,17 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strconv"
 	"testing"
-	"time"
 
-	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadot-worker/indexer"
 	"github.com/figment-networks/polkadot-worker/proxy"
 	"github.com/figment-networks/polkadot-worker/utils"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
+	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
@@ -25,21 +23,40 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
-
-var chainID = "chainID"
 
 type IndexerClientTest struct {
 	suite.Suite
 
 	*indexer.Client
 
+	Height               []uint64
+	ReqID                uuid.UUID
+	BlockResponse        []utils.BlockResp
+	EventsResponse       [][]utils.EventsResp
+	TransactionsResponse [][]utils.TransactionsResp
+
+	ChainID     string
+	Currency    string
+	Exp         int
+	Version     string
 	ProxyClient *proxyClientMock
 }
 
 func (ic *IndexerClientTest) SetupTest() {
-	page := uint64(100)
+	reqID, err := uuid.NewRandom()
+	ic.Require().Nil(err)
+	ic.ReqID = reqID
+
+	ic.ChainID = "Polkadot"
+	ic.Currency = "DOT"
+	ic.Exp = 12
+	ic.Version = "0.0.1"
+	ic.Height = []uint64{3941719, 3941720}
+
+	ic.BlockResponse = utils.GetBlocksResponses(ic.Height)
+	ic.EventsResponse = utils.GetEventsResponses(ic.Height)
+	ic.TransactionsResponse = utils.GetTransactionsResponses(ic.Height)
 
 	log, err := zap.NewDevelopment()
 	ic.Require().Nil(err)
@@ -50,42 +67,25 @@ func (ic *IndexerClientTest) SetupTest() {
 
 	proxyClientMock := proxyClientMock{}
 
-	ic.Client = indexer.NewClient(chainID, log.Sugar(), page, &proxyClientMock)
+	ic.Client = indexer.NewClient(log.Sugar(), &proxyClientMock, ic.Exp, ic.ChainID, ic.Currency, ic.Version)
 	ic.ProxyClient = &proxyClientMock
 }
 
 func (ic *IndexerClientTest) TestGetLatest_OK() {
-	blockHash := "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf"
-	trHash := "0xe05668b03c6e8bc1dbb61afab01d0515460693e5ade5627461c6298fcf6b8e72"
-	trExtrinsicIndex := int64(7)
-	evIds := [][2]int64{{1, 3}, {7, 4}}
-	fee := "1000"
-	height := uint64(7926)
-	isSuccess := true
-	now := time.Now()
-	time := strconv.Itoa(int(now.Unix()))
-	reqID, err := uuid.NewRandom()
-	ic.Require().Nil(err)
-
-	blockRes := utils.BlockResponse(int64(height), blockHash, timestamppb.New(now))
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), height).Return(blockRes, nil)
-
-	trRes := utils.TransactionResponse(trExtrinsicIndex, isSuccess, fee, trHash, time)
-	ic.ProxyClient.On("GetTransactionByHeight", mock.AnythingOfType("*context.cancelCtx"), height).Return(trRes, nil)
-
-	evRes := utils.EventResponse(evIds)
-	ic.ProxyClient.On("GetEventByHeight", mock.AnythingOfType("*context.cancelCtx"), height).Return(evRes, nil)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
+	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.EventsResponse(ic.EventsResponse[0]), nil)
 
 	req := structs.LatestDataRequest{
-		LastHeight: height,
+		LastHeight: uint64(ic.Height[0]),
 	}
 
 	var buffer bytes.Buffer
-	err = json.NewEncoder(&buffer).Encode(req)
+	err := json.NewEncoder(&buffer).Encode(req)
 	ic.Require().Nil(err)
 
 	tr := cStructs.TaskRequest{
-		Id:      reqID,
+		Id:      ic.ReqID,
 		Type:    structs.ReqIDLatestData,
 		Payload: make([]byte, buffer.Len()),
 	}
@@ -101,7 +101,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 
 	blockFounded, transactionFounded, endFounded := false, false, false
 	for s := range stream.ResponseListener {
-		if reqID != s.Id {
+		if ic.ReqID != s.Id {
 			continue
 		}
 
@@ -111,7 +111,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 			err := json.Unmarshal(s.Payload, &block)
 			ic.Require().Nil(err)
 
-			ic.validateBlock(block, height, blockHash, now)
+			ic.validateBlock(block, ic.BlockResponse[0])
 			blockFounded = true
 			break
 
@@ -120,7 +120,8 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 			err := json.Unmarshal(s.Payload, &transaction)
 			ic.Require().Nil(err)
 
-			ic.validateTransaction(transaction, height, blockHash, trHash, fee, isSuccess, now, []string{"4"})
+			expectedEvents := [][]utils.EventsResp{ic.EventsResponse[0][1:]}
+			utils.ValidateTransactions(&ic.Suite, transaction, ic.BlockResponse[0], ic.TransactionsResponse[0], expectedEvents, ic.ChainID, ic.Currency, int32(ic.Exp))
 			transactionFounded = true
 			break
 
@@ -136,11 +137,8 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
-	reqID, err := uuid.NewRandom()
-	ic.Require().Nil(err)
-
 	tr := cStructs.TaskRequest{
-		Id:      reqID,
+		Id:      ic.ReqID,
 		Type:    structs.ReqIDLatestData,
 		Payload: make([]byte, 0),
 	}
@@ -154,7 +152,7 @@ func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
 	stream.RequestListener <- tr
 
 	for response := range stream.ResponseListener {
-		if response.Id != reqID || response.Error.Msg == "" {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
 			continue
 		}
 
@@ -165,24 +163,19 @@ func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_BlockResponseError() {
-	height := uint64(7926)
-	reqID, err := uuid.NewRandom()
-	ic.Require().Nil(err)
-
-	blockRes := &blockpb.GetByHeightResponse{}
 	e := errors.New("new block error")
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), height).Return(blockRes, e)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(&blockpb.GetByHeightResponse{}, e)
 
 	req := structs.LatestDataRequest{
-		LastHeight: height,
+		LastHeight: uint64(ic.Height[0]),
 	}
 
 	var buffer bytes.Buffer
-	err = json.NewEncoder(&buffer).Encode(req)
+	err := json.NewEncoder(&buffer).Encode(req)
 	ic.Require().Nil(err)
 
 	tr := cStructs.TaskRequest{
-		Id:      reqID,
+		Id:      ic.ReqID,
 		Type:    structs.ReqIDLatestData,
 		Payload: make([]byte, buffer.Len()),
 	}
@@ -197,7 +190,7 @@ func (ic *IndexerClientTest) TestGetLatest_BlockResponseError() {
 	stream.RequestListener <- tr
 
 	for response := range stream.ResponseListener {
-		if response.Id != reqID || response.Error.Msg == "" {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
 			continue
 		}
 
@@ -208,29 +201,21 @@ func (ic *IndexerClientTest) TestGetLatest_BlockResponseError() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_TransactionResponseError() {
-	blockHash := "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf"
-	height := uint64(7926)
-	now := time.Now()
-	reqID, err := uuid.NewRandom()
-	ic.Require().Nil(err)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 
-	blockRes := utils.BlockResponse(int64(height), blockHash, timestamppb.New(now))
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), height).Return(blockRes, nil)
-
-	trRes := &transactionpb.GetByHeightResponse{}
 	e := errors.New("new transaction error")
-	ic.ProxyClient.On("GetTransactionByHeight", mock.AnythingOfType("*context.cancelCtx"), height).Return(trRes, e)
+	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(&transactionpb.GetByHeightResponse{}, e)
 
 	req := structs.LatestDataRequest{
-		LastHeight: height,
+		LastHeight: uint64(ic.Height[0]),
 	}
 
 	var buffer bytes.Buffer
-	err = json.NewEncoder(&buffer).Encode(req)
+	err := json.NewEncoder(&buffer).Encode(req)
 	ic.Require().Nil(err)
 
 	tr := cStructs.TaskRequest{
-		Id:      reqID,
+		Id:      ic.ReqID,
 		Type:    structs.ReqIDLatestData,
 		Payload: make([]byte, buffer.Len()),
 	}
@@ -245,7 +230,7 @@ func (ic *IndexerClientTest) TestGetLatest_TransactionResponseError() {
 	stream.RequestListener <- tr
 
 	for response := range stream.ResponseListener {
-		if response.Id != reqID || response.Error.Msg == "" {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
 			continue
 		}
 
@@ -256,37 +241,22 @@ func (ic *IndexerClientTest) TestGetLatest_TransactionResponseError() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_EventResponseError() {
-	blockHash := "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf"
-	trHash := "0xe05668b03c6e8bc1dbb61afab01d0515460693e5ade5627461c6298fcf6b8e72"
-	trExtrinsicIndex := int64(7)
-	fee := "1000"
-	height := uint64(7926)
-	isSuccess := true
-	now := time.Now()
-	time := strconv.Itoa(int(now.Unix()))
-	reqID, err := uuid.NewRandom()
-	ic.Require().Nil(err)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
 
-	blockRes := utils.BlockResponse(int64(height), blockHash, timestamppb.New(now))
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), height).Return(blockRes, nil)
-
-	trRes := utils.TransactionResponse(trExtrinsicIndex, isSuccess, fee, trHash, time)
-	ic.ProxyClient.On("GetTransactionByHeight", mock.AnythingOfType("*context.cancelCtx"), height).Return(trRes, nil)
-
-	evRes := &eventpb.GetByHeightResponse{}
 	e := errors.New("new event error")
-	ic.ProxyClient.On("GetEventByHeight", mock.AnythingOfType("*context.cancelCtx"), height).Return(evRes, e)
+	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(&eventpb.GetByHeightResponse{}, e)
 
 	req := structs.LatestDataRequest{
-		LastHeight: height,
+		LastHeight: uint64(ic.Height[0]),
 	}
 
 	var buffer bytes.Buffer
-	err = json.NewEncoder(&buffer).Encode(req)
+	err := json.NewEncoder(&buffer).Encode(req)
 	require.Nil(ic.T(), err)
 
 	tr := cStructs.TaskRequest{
-		Id:      reqID,
+		Id:      ic.ReqID,
 		Type:    structs.ReqIDLatestData,
 		Payload: make([]byte, buffer.Len()),
 	}
@@ -301,7 +271,7 @@ func (ic *IndexerClientTest) TestGetLatest_EventResponseError() {
 	stream.RequestListener <- tr
 
 	for response := range stream.ResponseListener {
-		if response.Id != reqID || response.Error.Msg == "" {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
 			continue
 		}
 
@@ -312,58 +282,24 @@ func (ic *IndexerClientTest) TestGetLatest_EventResponseError() {
 }
 
 func (ic *IndexerClientTest) TestGetTransactions_OK() {
-	startHeight := uint64(7926)
-	endHeight := uint64(7927)
-	now := time.Now()
-	reqID, err := uuid.NewRandom()
-	ic.Require().Nil(err)
-
-	blockHash1 := "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf"
-	trHash1 := "0xe05668b03c6e8bc1dbb61afab01d0515460693e5ade5627461c6298fcf6b8e72"
-	trExtrinsicIndex1 := int64(7)
-	evIds1 := [][2]int64{{1, 3}, {7, 4}}
-	fee1 := "1000"
-	isSuccess1 := true
-	time1 := strconv.Itoa(int(now.Unix()))
-
-	time2 := now.Add(-500 * time.Second)
-	blockHash2 := "316cc74b33a8a9480a28ab7e7885acba0x2326841a64e0a3fff2b4bb760d85e3cf"
-	trHash2 := "5668b03c61afab01d05150xe0460693e56e8bc1dbbade5627461c6298fcf6b8e72"
-	trExtrinsicIndex2 := int64(21)
-	evIds2 := [][2]int64{{21, 63}, {11, 77}}
-	fee2 := "2000"
-	isSuccess2 := false
-	time2Str := strconv.Itoa(int(time2.Unix()))
-
-	blockRes := utils.BlockResponse(int64(startHeight), blockHash1, timestamppb.New(now))
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(blockRes, nil)
-
-	blockRes2 := utils.BlockResponse(int64(endHeight), blockHash2, timestamppb.New(time2))
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), endHeight).Return(blockRes2, nil)
-
-	trRes := utils.TransactionResponse(trExtrinsicIndex1, isSuccess1, fee1, trHash1, time1)
-	ic.ProxyClient.On("GetTransactionByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(trRes, nil)
-
-	trRes2 := utils.TransactionResponse(trExtrinsicIndex2, isSuccess2, fee2, trHash2, time2Str)
-	ic.ProxyClient.On("GetTransactionByHeight", mock.AnythingOfType("*context.cancelCtx"), endHeight).Return(trRes2, nil)
-
-	evRes := utils.EventResponse(evIds1)
-	ic.ProxyClient.On("GetEventByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(evRes, nil)
-
-	evRes2 := utils.EventResponse(evIds2)
-	ic.ProxyClient.On("GetEventByHeight", mock.AnythingOfType("*context.cancelCtx"), endHeight).Return(evRes2, nil)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.BlockResponse(ic.BlockResponse[1]), nil)
+	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
+	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.TransactionsResponse(ic.TransactionsResponse[1]), nil)
+	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.EventsResponse(ic.EventsResponse[0]), nil)
+	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.EventsResponse(ic.EventsResponse[1]), nil)
 
 	req := structs.HeightRange{
-		StartHeight: startHeight,
-		EndHeight:   endHeight,
+		StartHeight: uint64(ic.Height[0]),
+		EndHeight:   uint64(ic.Height[1]),
 	}
 
 	var buffer bytes.Buffer
-	err = json.NewEncoder(&buffer).Encode(req)
+	err := json.NewEncoder(&buffer).Encode(req)
 	ic.Require().Nil(err)
 
 	tr := cStructs.TaskRequest{
-		Id:      reqID,
+		Id:      ic.ReqID,
 		Type:    structs.ReqIDGetTransactions,
 		Payload: make([]byte, buffer.Len()),
 	}
@@ -379,7 +315,7 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 
 	countBlock, countTransaction, endFounded := 0, 0, false
 	for s := range stream.ResponseListener {
-		if reqID != s.Id {
+		if ic.ReqID != s.Id {
 			continue
 		}
 
@@ -390,11 +326,11 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 			ic.Require().Nil(err)
 
 			switch block.Hash {
-			case blockHash1:
-				ic.validateBlock(block, startHeight, blockHash1, now)
+			case ic.BlockResponse[0].Hash:
+				ic.validateBlock(block, ic.BlockResponse[0])
 				break
-			case blockHash2:
-				ic.validateBlock(block, endHeight, blockHash2, time2)
+			case ic.BlockResponse[1].Hash:
+				ic.validateBlock(block, ic.BlockResponse[1])
 			}
 
 			countBlock++
@@ -406,11 +342,13 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 			ic.Require().Nil(err)
 
 			switch transaction.Hash {
-			case trHash1:
-				ic.validateTransaction(transaction, startHeight, blockHash1, trHash1, fee1, isSuccess1, now, []string{"4"})
+			case ic.TransactionsResponse[0][0].Hash:
+				expectedEvents := [][]utils.EventsResp{ic.EventsResponse[0][1:]}
+				utils.ValidateTransactions(&ic.Suite, transaction, ic.BlockResponse[0], ic.TransactionsResponse[0], expectedEvents, ic.ChainID, ic.Currency, int32(ic.Exp))
 				break
-			case trHash2:
-				ic.validateTransaction(transaction, endHeight, blockHash2, trHash2, fee2, isSuccess2, time2, []string{"63"})
+			case ic.TransactionsResponse[1][0].Hash:
+				expectedEvents := [][]utils.EventsResp{ic.EventsResponse[1][1:]}
+				utils.ValidateTransactions(&ic.Suite, transaction, ic.BlockResponse[1], ic.TransactionsResponse[1], expectedEvents, ic.ChainID, ic.Currency, int32(ic.Exp))
 			}
 			countTransaction++
 			break
@@ -427,11 +365,8 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 }
 
 func (ic *IndexerClientTest) TestGetTransactions_HeightRangeUnmarshalError() {
-	reqID, err := uuid.NewRandom()
-	ic.Require().Nil(err)
-
 	tr := cStructs.TaskRequest{
-		Id:      reqID,
+		Id:      ic.ReqID,
 		Type:    structs.ReqIDGetTransactions,
 		Payload: make([]byte, 0),
 	}
@@ -445,7 +380,7 @@ func (ic *IndexerClientTest) TestGetTransactions_HeightRangeUnmarshalError() {
 	stream.RequestListener <- tr
 
 	for response := range stream.ResponseListener {
-		if response.Id != reqID || response.Error.Msg == "" {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
 			continue
 		}
 
@@ -456,44 +391,26 @@ func (ic *IndexerClientTest) TestGetTransactions_HeightRangeUnmarshalError() {
 }
 
 func (ic *IndexerClientTest) TestGetTransactions_GetBlockByHeightError() {
-	startHeight := uint64(7926)
-	endHeight := uint64(7927)
-	now := time.Now()
-	reqID, err := uuid.NewRandom()
-	ic.Require().Nil(err)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
+	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.TransactionsResponse(ic.TransactionsResponse[1]), nil)
+	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.EventsResponse(ic.EventsResponse[0]), nil)
+	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.EventsResponse(ic.EventsResponse[1]), nil)
 
-	blockHash1 := "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf"
-	trHash1 := "0xe05668b03c6e8bc1dbb61afab01d0515460693e5ade5627461c6298fcf6b8e72"
-	trExtrinsicIndex1 := int64(7)
-	evIds1 := [][2]int64{{1, 3}, {7, 4}}
-	fee1 := "1000"
-	isSuccess1 := true
-	time1 := strconv.Itoa(int(now.Unix()))
-
-	blockRes := utils.BlockResponse(int64(startHeight), blockHash1, timestamppb.New(now))
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(blockRes, nil)
-
-	trRes := utils.TransactionResponse(trExtrinsicIndex1, isSuccess1, fee1, trHash1, time1)
-	ic.ProxyClient.On("GetTransactionByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(trRes, nil)
-
-	evRes := utils.EventResponse(evIds1)
-	ic.ProxyClient.On("GetEventByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(evRes, nil)
-
-	blockRes2 := &blockpb.GetByHeightResponse{}
 	e := errors.New("new block error")
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), endHeight).Return(blockRes2, e)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(&blockpb.GetByHeightResponse{}, e)
 
 	req := structs.HeightRange{
-		StartHeight: startHeight,
-		EndHeight:   endHeight,
+		StartHeight: uint64(ic.Height[0]),
+		EndHeight:   uint64(ic.Height[1]),
 	}
 
 	var buffer bytes.Buffer
-	err = json.NewEncoder(&buffer).Encode(req)
+	err := json.NewEncoder(&buffer).Encode(req)
 	ic.Require().Nil(err)
 
 	tr := cStructs.TaskRequest{
-		Id:      reqID,
+		Id:      ic.ReqID,
 		Type:    structs.ReqIDGetTransactions,
 		Payload: make([]byte, buffer.Len()),
 	}
@@ -508,7 +425,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetBlockByHeightError() {
 	stream.RequestListener <- tr
 
 	for response := range stream.ResponseListener {
-		if response.Id != reqID || response.Error.Msg == "" {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
 			continue
 		}
 
@@ -519,38 +436,25 @@ func (ic *IndexerClientTest) TestGetTransactions_GetBlockByHeightError() {
 }
 
 func (ic *IndexerClientTest) TestGetTransactions_GetTransactionByHeightError() {
-	startHeight := uint64(7926)
-	endHeight := uint64(7927)
-	now := time.Now()
-	time2 := now.Add(-500 * time.Second)
-	blockHash1 := "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf"
-	blockHash2 := "316cc74b33a8a9480a28ab7e7885acba0x2326841a64e0a3fff2b4bb760d85e3cf"
-	reqID, err := uuid.NewRandom()
-	ic.Require().Nil(err)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.BlockResponse(ic.BlockResponse[1]), nil)
+	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.EventsResponse(ic.EventsResponse[0]), nil)
+	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.EventsResponse(ic.EventsResponse[1]), nil)
 
-	blockRes := utils.BlockResponse(int64(startHeight), blockHash1, timestamppb.New(now))
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(blockRes, nil)
-
-	blockRes2 := utils.BlockResponse(int64(endHeight), blockHash2, timestamppb.New(time2))
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), endHeight).Return(blockRes2, nil)
-
-	e := errors.New("new transaction error one")
-	ic.ProxyClient.On("GetTransactionByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(&transactionpb.GetByHeightResponse{}, e)
-
-	e2 := errors.New("new transaction error two")
-	ic.ProxyClient.On("GetTransactionByHeight", mock.AnythingOfType("*context.cancelCtx"), endHeight).Return(&transactionpb.GetByHeightResponse{}, e2)
+	e := errors.New("new transaction error")
+	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(&transactionpb.GetByHeightResponse{}, e)
 
 	req := structs.HeightRange{
-		StartHeight: startHeight,
-		EndHeight:   endHeight,
+		StartHeight: uint64(ic.Height[0]),
+		EndHeight:   uint64(ic.Height[0]),
 	}
 
 	var buffer bytes.Buffer
-	err = json.NewEncoder(&buffer).Encode(req)
+	err := json.NewEncoder(&buffer).Encode(req)
 	ic.Require().Nil(err)
 
 	tr := cStructs.TaskRequest{
-		Id:      reqID,
+		Id:      ic.ReqID,
 		Type:    structs.ReqIDGetTransactions,
 		Payload: make([]byte, buffer.Len()),
 	}
@@ -565,7 +469,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetTransactionByHeightError() {
 	stream.RequestListener <- tr
 
 	for response := range stream.ResponseListener {
-		if response.Id != reqID || response.Error.Msg == "" {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
 			continue
 		}
 
@@ -573,63 +477,34 @@ func (ic *IndexerClientTest) TestGetTransactions_GetTransactionByHeightError() {
 
 		errMsg := response.Error.Msg
 		ic.Require().Contains(errMsg, "Error while getting Transactions with given range: Error while getting transactions")
-		ic.Require().Contains(errMsg, "new transaction error one")
-		ic.Require().Contains(errMsg, "new transaction error two")
+		ic.Require().Contains(errMsg, "new transaction error")
 		return
 	}
 }
 
 func (ic *IndexerClientTest) TestGetTransactions_GetEventByHeightError() {
-	startHeight := uint64(7926)
-	endHeight := uint64(7927)
-	now := time.Now()
-	reqID, err := uuid.NewRandom()
-	ic.Require().Nil(err)
-
-	blockHash1 := "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf"
-	trHash1 := "0xe05668b03c6e8bc1dbb61afab01d0515460693e5ade5627461c6298fcf6b8e72"
-	trExtrinsicIndex1 := int64(7)
-	fee1 := "1000"
-	isSuccess1 := true
-	time1 := strconv.Itoa(int(now.Unix()))
-
-	time2 := now.Add(-500 * time.Second)
-	blockHash2 := "316cc74b33a8a9480a28ab7e7885acba0x2326841a64e0a3fff2b4bb760d85e3cf"
-	trHash2 := "5668b03c61afab01d05150xe0460693e56e8bc1dbbade5627461c6298fcf6b8e72"
-	trExtrinsicIndex2 := int64(21)
-	fee2 := "2000"
-	isSuccess2 := false
-	time2Str := strconv.Itoa(int(time2.Unix()))
-
-	blockRes := utils.BlockResponse(int64(startHeight), blockHash1, timestamppb.New(now))
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(blockRes, nil)
-
-	blockRes2 := utils.BlockResponse(int64(endHeight), blockHash2, timestamppb.New(time2))
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), endHeight).Return(blockRes2, nil)
-
-	trRes := utils.TransactionResponse(trExtrinsicIndex1, isSuccess1, fee1, trHash1, time1)
-	ic.ProxyClient.On("GetTransactionByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(trRes, nil)
-
-	trRes2 := utils.TransactionResponse(trExtrinsicIndex2, isSuccess2, fee2, trHash2, time2Str)
-	ic.ProxyClient.On("GetTransactionByHeight", mock.AnythingOfType("*context.cancelCtx"), endHeight).Return(trRes2, nil)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.BlockResponse(ic.BlockResponse[1]), nil)
+	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
+	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.TransactionsResponse(ic.TransactionsResponse[1]), nil)
 
 	e := errors.New("new event error one")
-	ic.ProxyClient.On("GetEventByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(&eventpb.GetByHeightResponse{}, e)
+	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(&eventpb.GetByHeightResponse{}, e)
 
 	e2 := errors.New("new event error two")
-	ic.ProxyClient.On("GetEventByHeight", mock.AnythingOfType("*context.cancelCtx"), endHeight).Return(&eventpb.GetByHeightResponse{}, e2)
+	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(&eventpb.GetByHeightResponse{}, e2)
 
 	req := structs.HeightRange{
-		StartHeight: startHeight,
-		EndHeight:   endHeight,
+		StartHeight: uint64(ic.Height[0]),
+		EndHeight:   uint64(ic.Height[1]),
 	}
 
 	var buffer bytes.Buffer
-	err = json.NewEncoder(&buffer).Encode(req)
+	err := json.NewEncoder(&buffer).Encode(req)
 	ic.Require().Nil(err)
 
 	tr := cStructs.TaskRequest{
-		Id:      reqID,
+		Id:      ic.ReqID,
 		Type:    structs.ReqIDGetTransactions,
 		Payload: make([]byte, buffer.Len()),
 	}
@@ -644,7 +519,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetEventByHeightError() {
 	stream.RequestListener <- tr
 
 	for response := range stream.ResponseListener {
-		if response.Id != reqID || response.Error.Msg == "" {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
 			continue
 		}
 
@@ -657,44 +532,23 @@ func (ic *IndexerClientTest) TestGetTransactions_GetEventByHeightError() {
 }
 
 func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
-	startHeight := uint64(7926)
-	endHeight := uint64(7927)
-	now := time.Now()
-	reqID, err := uuid.NewRandom()
-	ic.Require().Nil(err)
+	ic.TransactionsResponse[0][0].Fee = "bad"
 
-	blockHash1 := "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf"
-	trHash1 := "0xe05668b03c6e8bc1dbb61afab01d0515460693e5ade5627461c6298fcf6b8e72"
-	trExtrinsicIndex1 := int64(7)
-	evIds1 := [][2]int64{{1, 3}, {7, 4}}
-	fee1 := "1000"
-	isSuccess1 := true
-	time1 := strconv.Itoa(int(now.Unix()))
-
-	blockRes := utils.BlockResponse(int64(startHeight), blockHash1, timestamppb.New(now))
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(blockRes, nil)
-
-	trRes := utils.TransactionResponse(trExtrinsicIndex1, isSuccess1, fee1, trHash1, time1)
-	ic.ProxyClient.On("GetTransactionByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(trRes, nil)
-
-	evRes := utils.EventResponse(evIds1)
-	ic.ProxyClient.On("GetEventByHeight", mock.AnythingOfType("*context.cancelCtx"), startHeight).Return(evRes, nil)
-
-	blockRes2 := &blockpb.GetByHeightResponse{}
-	e := errors.New("new block error")
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), endHeight).Return(blockRes2, e)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
+	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.EventsResponse(ic.EventsResponse[0]), nil)
 
 	req := structs.HeightRange{
-		StartHeight: startHeight,
-		EndHeight:   endHeight,
+		StartHeight: uint64(ic.Height[0]),
+		EndHeight:   uint64(ic.Height[0]),
 	}
 
 	var buffer bytes.Buffer
-	err = json.NewEncoder(&buffer).Encode(req)
+	err := json.NewEncoder(&buffer).Encode(req)
 	ic.Require().Nil(err)
 
 	tr := cStructs.TaskRequest{
-		Id:      reqID,
+		Id:      ic.ReqID,
 		Type:    structs.ReqIDGetTransactions,
 		Payload: make([]byte, buffer.Len()),
 	}
@@ -709,37 +563,20 @@ func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 	stream.RequestListener <- tr
 
 	for response := range stream.ResponseListener {
-		if response.Id != reqID || response.Error.Msg == "" {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
 			continue
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Error while getting Transactions with given range: Error while getting transactions: new block error")
+		ic.Require().Contains(response.Error.Msg, "Error while getting Transactions with given range: Error while getting transactions: Could not parse transaction partial fee \"bad\"")
 		return
 	}
 }
 
-func (ic *IndexerClientTest) validateBlock(block structs.Block, height uint64, hash string, time time.Time) {
-	ic.Require().Equal(height, block.Height)
-	ic.Require().Equal(hash, block.Hash)
-	ic.Require().Equal(time.Unix(), block.Time.Unix())
-}
-
-func (ic *IndexerClientTest) validateTransaction(transaction structs.Transaction, height uint64, blockHash, trHash, fee string, isSuccess bool, time time.Time, evIds []string) {
-	ic.Require().Equal(height, transaction.Height)
-	ic.Require().Equal(blockHash, transaction.BlockHash)
-	ic.Require().Equal(trHash, transaction.Hash)
-	ic.Require().Equal(strconv.Itoa(int(time.Unix())), transaction.Epoch)
-	ic.Require().Equal(chainID, transaction.ChainID)
-	ic.Require().Equal(fee, transaction.Fee[0].Text)
-	// ic.Require().Equal(time.Unix(), transaction.Time.Unix())
-	ic.Require().Equal("0.0.1", transaction.Version)
-	ic.Require().Equal(!isSuccess, transaction.HasErrors)
-
-	ic.Require().Len(transaction.Events, len(evIds))
-	for _, e := range evIds {
-		ic.Require().Equal(e, transaction.Events[0].ID)
-	}
+func (ic *IndexerClientTest) validateBlock(block structs.Block, resp utils.BlockResp) {
+	ic.Require().EqualValues(resp.Height, block.Height)
+	ic.Require().Equal(resp.Hash, block.Hash)
+	ic.Require().Equal(resp.Time.Seconds, block.Time.Unix())
 }
 
 func TestIndexerClient(t *testing.T) {
@@ -755,12 +592,12 @@ func (m proxyClientMock) GetBlockByHeight(ctx context.Context, height uint64) (*
 	return args.Get(0).(*blockpb.GetByHeightResponse), args.Error(1)
 }
 
-func (m proxyClientMock) GetEventByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error) {
+func (m proxyClientMock) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error) {
 	args := m.Called(ctx, height)
 	return args.Get(0).(*eventpb.GetByHeightResponse), args.Error(1)
 }
 
-func (m proxyClientMock) GetTransactionByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error) {
+func (m proxyClientMock) GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error) {
 	args := m.Called(ctx, height)
 	return args.Get(0).(*transactionpb.GetByHeightResponse), args.Error(1)
 }

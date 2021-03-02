@@ -1,23 +1,53 @@
 package mapper
 
 import (
+	"fmt"
+	"math/big"
 	"strconv"
+	"time"
 
 	"github.com/figment-networks/polkadot-worker/proxy"
+	"go.uber.org/zap"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
+
+	"github.com/pkg/errors"
 )
 
-const (
-	V_1 = "0.0.1"
-)
+func initExpDivider(precision int64) *big.Float {
+	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(precision), nil)
+	return new(big.Float).SetFloat64(float64(div.Int64()))
+}
 
-// TransactionMapper maps Block and Transaction response into database Transcation struct
-func TransactionMapper(blockRes *blockpb.GetByHeightResponse, chainID string, eventRes *eventpb.GetByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
+type TransactionMapper struct {
+	exp      int
+	div      *big.Float
+	chainID  string
+	currency string
+	version  string
+}
+
+// New creates a new Transaction mapper
+func New(exp int, chainID, currency, version string) *TransactionMapper {
+	return &TransactionMapper{
+		exp:      exp,
+		div:      initExpDivider(int64(exp)),
+		chainID:  chainID,
+		currency: currency,
+		version:  version,
+	}
+}
+
+// TransactionsMapper maps Block and Transactions response into database Transcations struct
+func (m *TransactionMapper) TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse,
+	transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
+	var transactions []*structs.Transaction
+	transactionMap := make(map[string]struct{})
+
 	timer := metrics.NewTimer(proxy.TransactionConversionDuration)
 	defer timer.ObserveDuration()
 
@@ -25,50 +55,132 @@ func TransactionMapper(blockRes *blockpb.GetByHeightResponse, chainID string, ev
 		return nil, nil
 	}
 
-	blockHash := blockRes.Block.BlockHash
-	height := blockRes.Block.Header.Height
-	transactionMap := make(map[string]struct{})
+	allEvents, err := parseEvents(log, eventRes, m.currency, m.div, m.exp)
+	if err != nil {
+		return nil, err
+	}
 
-	var transactions []*structs.Transaction
 	for _, t := range transactionRes.Transactions {
-		if _, ok := transactionMap[t.Hash]; ok {
+		if !isTransactionUnique(transactionMap, t.Hash) {
 			continue
 		}
 
-		transactionMap[t.Hash] = struct{}{}
+		time, err := parseTime(t.Time)
+		if err != nil {
+			return nil, err
+		}
 
-		// timeInt, err := strconv.Atoi(t.Time)
-		// if err != nil {
-		// 	return nil, errors.Wrap(err, "Could not parse transaction time")
-		// }
-
-		events := []structs.TransactionEvent{}
-		for _, e := range eventRes.Events {
-			if e.ExtrinsicIndex == t.ExtrinsicIndex {
-				events = append(events, structs.TransactionEvent{
-					ID: strconv.Itoa(int(e.Index)),
-				})
-			}
+		fee, err := m.getTransactionFee(t.PartialFee, t.Tip)
+		if err != nil {
+			return nil, err
 		}
 
 		transactions = append(transactions, &structs.Transaction{
 			Hash:      t.Hash,
-			BlockHash: blockHash,
-			Height:    uint64(height),
-			Epoch:     t.Time,
-			ChainID:   chainID,
-			// Time:      time.Unix(int64(timeInt), 0),
-			Fee:       []structs.TransactionAmount{{Text: t.PartialFee}},
-			GasWanted: 0,
-			GasUsed:   0,
-			Memo:      "",
-			Version:   V_1,
-			Events:    events,
-			Raw:       []byte{},
-			RawLog:    []byte{},
+			BlockHash: blockRes.Block.BlockHash,
+			Height:    uint64(blockRes.Block.Header.Height),
+			ChainID:   m.chainID,
+			Time:      *time,
+			Fee:       fee,
+			Version:   m.version,
+			Events:    allEvents.getEventsByTrIndex(t.ExtrinsicIndex, strconv.FormatUint(uint64(t.Nonce), 10), t.Hash, time),
 			HasErrors: !t.IsSuccess,
+			Raw:       []byte(t.Raw),
 		})
 	}
 
 	return transactions, nil
+}
+
+func isTransactionUnique(transactionMap map[string]struct{}, hash string) bool {
+	if _, ok := transactionMap[hash]; !ok {
+		transactionMap[hash] = struct{}{}
+		return true
+	}
+
+	return false
+}
+
+func parseTime(timeStr string) (*time.Time, error) {
+	timeInt, err := strconv.Atoi(timeStr)
+	if err != nil {
+		return nil, errors.Wrap(err, "Could not parse transaction time")
+	}
+
+	time := time.Unix(int64(timeInt), 0)
+	return &time, nil
+}
+
+func (m *TransactionMapper) getTransactionFee(partialFeeStr, tipStr string) ([]structs.TransactionAmount, error) {
+	var ok bool
+	var fee, tip *big.Int
+
+	if fee, ok = new(big.Int).SetString(partialFeeStr, 10); !ok {
+		return nil, fmt.Errorf("Could not parse transaction partial fee %q", partialFeeStr)
+	}
+
+	if tip, ok = new(big.Int).SetString(tipStr, 10); !ok {
+		return nil, fmt.Errorf("Could not parse transaction tip %q", tipStr)
+	}
+
+	amount := new(big.Int).Add(fee, tip)
+
+	textAmount, err := countCurrencyAmount(m.exp, amount.String(), m.div)
+	if err != nil {
+		return nil, errors.New("Could not count currency amount")
+	}
+
+	return []structs.TransactionAmount{{
+		Text:     fmt.Sprintf("%s%s", textAmount.Text('f', -1), m.currency),
+		Currency: m.currency,
+		Numeric:  amount,
+		Exp:      int32(m.exp),
+	}}, nil
+}
+
+type eventMap map[int64][]structs.TransactionEvent
+
+func (e eventMap) getEventsByTrIndex(index int64, nonce, trHash string, time *time.Time) []structs.TransactionEvent {
+	evts, ok := e[index]
+	if !ok {
+		return nil
+	}
+
+	events := make([]structs.TransactionEvent, len(evts))
+
+	for i, evt := range evts {
+		event := evt
+
+		event.Sub = subWithNonceAndTime(&event.Sub, nonce, time)
+
+		events[i] = event
+	}
+
+	return events
+}
+
+func subWithNonceAndTime(subs *[]structs.SubsetEvent, nonce string, time *time.Time) []structs.SubsetEvent {
+	events := make([]structs.SubsetEvent, len(*subs))
+
+	for i, sub := range *subs {
+		event := sub
+
+		event.Completion = time
+		event.Nonce = nonce
+		event.Sub = subWithNonceAndTime(&event.Sub, nonce, time)
+
+		events[i] = event
+	}
+
+	return events
+}
+
+func countCurrencyAmount(exp int, value string, divider *big.Float) (*big.Float, error) {
+	amount := new(big.Float)
+	amount, ok := amount.SetString(value)
+	if !ok {
+		return nil, fmt.Errorf("Could not create big float from value %s", value)
+	}
+
+	return new(big.Float).Quo(amount, divider), nil
 }

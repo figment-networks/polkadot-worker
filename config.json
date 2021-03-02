@@ -1,17 +1,17 @@
 {
   "worker": {
       "chain_id": "Polkadot",
+      "currency": "DOT",
+      "exp":      12,
       "log_level": "info",
       "network": "Polkadot",
       "version": "0.0.1",
       "address": {
           "host": "0.0.0.0",
-          "port": ":3000"
+          "grcp_port": ":3000",
+          "http_port": ":3001"
       }
   },
-  "polkadot_client_base_url": "localhost:50051",
-  "indexer_manager": {
-      "base_url": "127.0.0.1:8085",
-      "page": 100
-  }
+  "proxy_base_url": "localhost:50051",
+  "indexer_manager_base_url": "127.0.0.1:8085"
 }
