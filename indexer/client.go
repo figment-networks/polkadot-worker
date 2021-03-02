@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 
@@ -23,23 +22,12 @@ import (
 )
 
 var (
-	expDividers map[int]*big.Float
-
 	// ErrBadRequest is returned when cannot unmarshal message
 	ErrBadRequest = errors.New("bad request")
 
 	getTransactionDuration *metrics.GroupObserver
 	getLatestDuration      *metrics.GroupObserver
 )
-
-func initExpDividers(maxPrecision int) {
-	expDividers = make(map[int]*big.Float)
-
-	for i := 0; i <= maxPrecision; i++ {
-		div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(i)), nil)
-		expDividers[i] = new(big.Float).SetFloat64(float64(div.Int64()))
-	}
-}
 
 // Client connecting to indexer-manager
 type Client struct {
@@ -48,19 +36,17 @@ type Client struct {
 	exp      int
 	version  string
 
-	log   *zap.SugaredLogger
-	proxy proxy.ClientIface
-
-	sLock   sync.Mutex
-	streams map[uuid.UUID]*cStructs.StreamAccess
+	log      *zap.SugaredLogger
+	proxy    proxy.ClientIface
+	sLock    sync.Mutex
+	streams  map[uuid.UUID]*cStructs.StreamAccess
+	trMapper *mapper.TransactionMapper
 }
 
 // NewClient is a indexer-manager Client constructor
 func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, chainID, currency, version string) *Client {
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
-
-	initExpDividers(exp)
 
 	return &Client{
 		chainID:  chainID,
@@ -70,6 +56,7 @@ func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, chainID
 		log:      log,
 		proxy:    proxy,
 		streams:  make(map[uuid.UUID]*cStructs.StreamAccess),
+		trMapper: mapper.New(exp, chainID, currency, version),
 	}
 }
 
@@ -416,8 +403,7 @@ func (c *Client) getTransactions(ctx context.Context, out chan cStructs.OutResp,
 		return nil
 	}
 
-	if transactionMapped, e = mapper.TransactionsMapper(c.log, block, events, transactions,
-		c.exp, expDividers[c.exp], c.chainID, c.currency, c.version); e != nil {
+	if transactionMapped, e = c.trMapper.TransactionsMapper(c.log, block, events, transactions); e != nil {
 		err <- e
 		ctx.Done()
 		return nil

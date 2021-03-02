@@ -18,9 +18,33 @@ import (
 	"github.com/pkg/errors"
 )
 
+func initExpDivider(precision int64) *big.Float {
+	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(precision), nil)
+	return new(big.Float).SetFloat64(float64(div.Int64()))
+}
+
+type TransactionMapper struct {
+	exp      int
+	div      *big.Float
+	chainID  string
+	currency string
+	version  string
+}
+
+// New creates a new Transaction mapper
+func New(exp int, chainID, currency, version string) *TransactionMapper {
+	return &TransactionMapper{
+		exp:      exp,
+		div:      initExpDivider(int64(exp)),
+		chainID:  chainID,
+		currency: currency,
+		version:  version,
+	}
+}
+
 // TransactionsMapper maps Block and Transactions response into database Transcations struct
-func TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse,
-	transactionRes *transactionpb.GetByHeightResponse, exp int, div *big.Float, chainID, currency, version string) ([]*structs.Transaction, error) {
+func (m *TransactionMapper) TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse,
+	transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
 	var transactions []*structs.Transaction
 	transactionMap := make(map[string]struct{})
 
@@ -31,7 +55,7 @@ func TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightRes
 		return nil, nil
 	}
 
-	allEvents, err := parseEvents(log, eventRes, currency, div, exp)
+	allEvents, err := parseEvents(log, eventRes, m.currency, m.div, m.exp)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +70,7 @@ func TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightRes
 			return nil, err
 		}
 
-		fee, err := getTransactionFee(exp, div, currency, t.PartialFee, t.Tip)
+		fee, err := m.getTransactionFee(t.PartialFee, t.Tip)
 		if err != nil {
 			return nil, err
 		}
@@ -55,10 +79,10 @@ func TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightRes
 			Hash:      t.Hash,
 			BlockHash: blockRes.Block.BlockHash,
 			Height:    uint64(blockRes.Block.Header.Height),
-			ChainID:   chainID,
+			ChainID:   m.chainID,
 			Time:      *time,
 			Fee:       fee,
-			Version:   version,
+			Version:   m.version,
 			Events:    allEvents.getEventsByTrIndex(t.ExtrinsicIndex, strconv.FormatUint(uint64(t.Nonce), 10), t.Hash, time),
 			HasErrors: !t.IsSuccess,
 			Raw:       []byte(t.Raw),
@@ -87,7 +111,7 @@ func parseTime(timeStr string) (*time.Time, error) {
 	return &time, nil
 }
 
-func getTransactionFee(exp int, divider *big.Float, currency, partialFeeStr, tipStr string) ([]structs.TransactionAmount, error) {
+func (m *TransactionMapper) getTransactionFee(partialFeeStr, tipStr string) ([]structs.TransactionAmount, error) {
 	var ok bool
 	var fee, tip *big.Int
 
@@ -101,16 +125,16 @@ func getTransactionFee(exp int, divider *big.Float, currency, partialFeeStr, tip
 
 	amount := new(big.Int).Add(fee, tip)
 
-	textAmount, err := countCurrencyAmount(exp, amount.String(), divider)
+	textAmount, err := countCurrencyAmount(m.exp, amount.String(), m.div)
 	if err != nil {
 		return nil, errors.New("Could not count currency amount")
 	}
 
 	return []structs.TransactionAmount{{
-		Text:     fmt.Sprintf("%s%s", textAmount.Text('f', -1), currency),
-		Currency: currency,
+		Text:     fmt.Sprintf("%s%s", textAmount.Text('f', -1), m.currency),
+		Currency: m.currency,
 		Numeric:  amount,
-		Exp:      int32(exp),
+		Exp:      int32(m.exp),
 	}}, nil
 }
 
