@@ -20,6 +20,7 @@ type WorkerConfig struct {
 
 // WorkerAddress host and port
 type WorkerAddress struct {
-	Host string `json:"host"`
-	Port string `json:"port"`
+	Host     string `json:"host"`
+	GRCPPort string `json:"grcp_port"`
+	HTTPPort string `json:"http_port"`
 }

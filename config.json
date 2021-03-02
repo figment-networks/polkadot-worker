@@ -8,7 +8,8 @@
       "version": "0.0.1",
       "address": {
           "host": "0.0.0.0",
-          "port": ":3000"
+          "grcp_port": ":3000",
+          "http_port": ":3001"
       }
   },
   "proxy_base_url": "localhost:50051",
