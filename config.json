@@ -6,12 +6,14 @@
       "log_level": "info",
       "network": "Polkadot",
       "version": "0.0.1",
-      "address": {
-          "host": "0.0.0.0",
-          "grcp_port": ":3000",
-          "http_port": ":3001"
-      }
+      "host": "0.0.0.0",
+      "port": ":3001"
+      
   },
   "proxy_base_url": "localhost:50051",
-  "indexer_manager_base_url": "127.0.0.1:8085"
+  "indexer_manager":  {
+    "base_url": "127.0.0.1:8085",
+    "host": "host.docker.internal",
+    "port": ":3000"
+  }
 }

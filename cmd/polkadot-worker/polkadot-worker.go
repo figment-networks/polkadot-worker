@@ -33,29 +33,12 @@ import (
 // Start runs polkadot-worker
 func main() {
 	cfg := getConfig()
-	mainCtx := context.Background()
 	log, logSync := getLogger(cfg.Worker.LogLevel)
 	defer logSync()
 
-	indexerClient, closeProxyConnection := createIndexerClient(mainCtx, log, &cfg)
-	defer closeProxyConnection()
-
-	registerWorker(mainCtx, log, &cfg)
-
-	grpcServer := grpc.NewServer()
-	indexer := grpcIndexer.NewIndexerServer(mainCtx, indexerClient, log.Desugar())
-
-	grpcProtoIndexer.RegisterIndexerServiceServer(grpcServer, indexer)
-
-	lis, err := net.Listen("tcp", cfg.Worker.Address.Host+cfg.Worker.Address.GRCPPort)
-	if err != nil {
-		log.Errorf("Error while listening on port %s %s", cfg.Worker.Address.GRCPPort, zap.Error(err))
-		return
-	}
-
 	go handleHTTP(log, &cfg)
 
-	serveGRPC(log, grpcServer, lis, cfg.ProxyBaseURL)
+	serveGRPC(log, cfg)
 }
 
 func getConfig() (cfg config.Config) {
@@ -142,11 +125,11 @@ func registerWorker(ctx context.Context, log *zap.SugaredLogger, cfg *config.Con
 		log.Errorf("Error while creating new random id for polkadot-worker: %s", err.Error())
 	}
 
-	workerAddress := cfg.Worker.Address.Host + cfg.Worker.Address.GRCPPort
+	workerAddress := cfg.IndexerManager.Host + cfg.IndexerManager.Port
 
 	c := connectivity.NewWorkerConnections(workerRunID.String(), workerAddress, cfg.Worker.Network, cfg.Worker.ChainID, "0.0.1")
 
-	c.AddManager(cfg.IndexerManagerBaseURL + "/client_ping")
+	c.AddManager(cfg.IndexerManager.BaseURL + "/client_ping")
 
 	go c.Run(ctx, log.Desugar(), 10*time.Second)
 }
@@ -165,20 +148,41 @@ func handleHTTP(log *zap.SugaredLogger, cfg *config.Config) {
 	mux.Handle("/metrics", metrics.Handler())
 
 	s := &http.Server{
-		Addr:         cfg.Worker.Address.Host + cfg.Worker.Address.HTTPPort,
+		Addr:         cfg.Worker.Host + cfg.Worker.Port,
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
 
-	log.Infof("HTTP handler listening on port %s", cfg.Worker.Address.HTTPPort)
+	log.Infof("HTTP handler listening on port %s", cfg.Worker.Port)
 
 	if err := s.ListenAndServe(); err != nil {
-		log.Error("Error while listening on %s port", cfg.Worker.Address.HTTPPort, zap.Error(err))
+		log.Error("Error while listening on %s port", cfg.Worker.Port, zap.Error(err))
 	}
 }
 
-func serveGRPC(log *zap.SugaredLogger, grpcServer *grpc.Server, lis net.Listener, port string) {
+func serveGRPC(log *zap.SugaredLogger, cfg config.Config) {
+	ctx := context.Background()
+
+	indexerClient, closeProxyConnection := createIndexerClient(ctx, log, &cfg)
+	defer closeProxyConnection()
+
+	registerWorker(ctx, log, &cfg)
+
+	grpcServer := grpc.NewServer()
+	indexer := grpcIndexer.NewIndexerServer(ctx, indexerClient, log.Desugar())
+
+	grpcProtoIndexer.RegisterIndexerServiceServer(grpcServer, indexer)
+
+	host := cfg.Worker.Host
+	port := cfg.IndexerManager.Port
+
+	lis, err := net.Listen("tcp", host+port)
+	if err != nil {
+		log.Errorf("Error while listening on port %s %s", port, zap.Error(err))
+		return
+	}
+
 	log.Infof("gRPC server listening on port %s", port)
 
 	grpcServer.Serve(lis)
