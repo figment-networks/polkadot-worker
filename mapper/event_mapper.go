@@ -60,7 +60,7 @@ func isEventUnique(evIndexMap map[int64]struct{}, evIdx int64) bool {
 type event struct {
 	structs.SubsetEvent
 
-	accountID          string
+	accountsID         []string
 	recipientAccountID string
 	senderAccountID    string
 	value              string
@@ -116,20 +116,26 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 		}
 
 		switch v {
-		case "account":
-			e.accountID, err = getAccountID(ev.Data[i])
+		case "account", "approving", "multisig", "authority_id":
+			if accountID, err := getAccountID(ev.Data[i]); err == nil {
+				e.accountsID = append(e.accountsID, accountID)
+			}
 		case "error":
 			e.eventType = []string{"error"}
-		case "info":
+		case "info", "tip_hash", "call_hash", "index":
 			break
-		case "from":
+		case "from", "stash", "unvested":
 			e.senderAccountID, err = getAccountID(ev.Data[i])
 		case "to", "who":
 			e.recipientAccountID, err = getAccountID(ev.Data[i])
-		case "deposit", "free_balance", "value", "balance":
+		case "deposit", "free_balance", "value", "balance", "amount":
 			e.value, err = getBalance(ev.Data[i])
 		default:
 			return fmt.Errorf("Unknown value to parse event %q", v)
+		}
+
+		if err != nil {
+			return fmt.Errorf("%d Error while parsing event %s", i, err.Error())
 		}
 
 		attributes[i] = fmt.Sprintf("%v", ev.Data[i])
@@ -211,16 +217,20 @@ func (e *event) appendAmount(amount *structs.TransactionAmount) {
 }
 
 func (e *event) appendAccounts() {
-	if e.accountID == "" && e.senderAccountID == "" && e.recipientAccountID == "" {
+	if e.accountsID == nil && e.senderAccountID == "" && e.recipientAccountID == "" {
 		return
 	}
 
 	e.Node = make(map[string][]structs.Account)
 
-	if e.accountID != "" {
-		e.Node["versions"] = []structs.Account{{
-			ID: e.accountID,
-		}}
+	accounts := make([]structs.Account, len(e.accountsID))
+	for i, accountID := range e.accountsID {
+		accounts[i] = structs.Account{
+			ID: accountID,
+		}
+	}
+	if e.accountsID != nil {
+		e.Node["versions"] = accounts
 	}
 
 	e.appendSender()
