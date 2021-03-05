@@ -124,7 +124,7 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 			e.eventType = []string{"error"}
 		case "info", "tip_hash", "call_hash", "index":
 			break
-		case "from":
+		case "from", "stash", "unvested":
 			e.senderAccountID, err = getAccountID(ev.Data[i])
 		case "to", "who":
 			e.recipientAccountID, err = getAccountID(ev.Data[i])
