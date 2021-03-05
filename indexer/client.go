@@ -403,7 +403,14 @@ func (c *Client) getTransactions(ctx context.Context, out chan cStructs.OutResp,
 		return nil
 	}
 
-	if transactionMapped, e = c.trMapper.TransactionsMapper(c.log, block, events, transactions); e != nil {
+	meta, e := c.proxy.GetMetaByHeight(ctx, height)
+	if e != nil {
+		err <- e
+		ctx.Done()
+		return nil
+	}
+
+	if transactionMapped, e = c.trMapper.TransactionsMapper(c.log, block, events, meta, transactions); e != nil {
 		err <- e
 		ctx.Done()
 		return nil

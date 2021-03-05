@@ -7,6 +7,7 @@ import (
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 	"github.com/stretchr/testify/suite"
@@ -80,6 +81,16 @@ func EventsResponse(resp []EventsResp) *eventpb.GetByHeightResponse {
 	return &eventpb.GetByHeightResponse{Events: evts}
 }
 
+type MetaResp struct {
+	Era int64
+}
+
+func MetaResponse(resp MetaResp) *chainpb.GetMetaByHeightResponse {
+	return &chainpb.GetMetaByHeightResponse{
+		Era: resp.Era,
+	}
+}
+
 type TransactionsResp struct {
 	Index     int64
 	Args      string
@@ -115,16 +126,38 @@ func TransactionsResponse(resp TransactionsResp) *transactionpb.GetByHeightRespo
 	}
 }
 
-func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp TransactionsResp, evResp []EventsResp, chainID, currency string, exp int32) {
+func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp []TransactionsResp, evResp [][]EventsResp, mResp MetaResp, chainID, currency string, exp int32) {
 	sut.Require().Equal(bResp.Hash, transaction.BlockHash)
 	sut.Require().EqualValues(bResp.Height, transaction.Height)
 	sut.Require().EqualValues(bResp.Height, transaction.Height)
 
-	sut.Require().Equal(trResp.Hash, transaction.Hash)
-	sut.Require().Equal(chainID, transaction.ChainID)
-	sut.Require().Equal(trResp.Time, strconv.Itoa(int(transaction.Time.Unix())))
-	sut.Require().Equal("0.0.1", transaction.Version)
-	sut.Require().Equal(!trResp.IsSuccess, transaction.HasErrors)
+	for i, t := range trResp {
+		sut.Require().Equal(t.Hash, transaction.Hash)
+		sut.Require().Equal(chainID, transaction.ChainID)
+		sut.Require().Equal(t.Time, strconv.Itoa(int(transaction.Time.Unix())))
+		sut.Require().Equal("0.0.1", transaction.Version)
+		sut.Require().Equal(!t.IsSuccess, transaction.HasErrors)
+		sut.Require().Equal(strconv.Itoa(int(mResp.Era)), transaction.Epoch)
+
+		feeNumeric, ok := new(big.Int).SetString(t.FeeAmount, 10)
+		sut.Require().True(ok)
+		sut.Require().Equal(feeNumeric, transaction.Fee[0].Numeric)
+		sut.Require().Equal(t.FeeAmountTxt, transaction.Fee[0].Text)
+		sut.Require().Equal(currency, transaction.Fee[0].Currency)
+		sut.Require().EqualValues(exp, transaction.Fee[0].Exp)
+
+		sut.Require().Len(transaction.Events, len(evResp[i]))
+		for i, e := range evResp[i] {
+			sut.Require().Equal(strconv.Itoa(int(e.Index)), transaction.Events[i].ID)
+			// sub.Require().Equal(kind, transaction.Events[i].Kind)
+			// sub.Require().Equal(action, transaction.Events[i].Sub[0].Action)
+
+			expectedType := e.Method
+			for _, d := range e.EventData {
+				if d.Name == "DispatchError" {
+					expectedType = "error"
+				}
+			}
 
 	validateAmount(sut, &transaction.Fee[0], int(exp), trResp.FeeAmount, trResp.FeeAmountTxt, currency)
 
@@ -195,7 +228,7 @@ func validateAmount(sut *suite.Suite, amount *structs.TransactionAmount, exp int
 	sut.Require().EqualValues(exp, amount.Exp)
 }
 
-func GetTransactionsResponses(height []uint64) []TransactionsResp {
+func GetTransactionsResponses(height [2]uint64) [][]TransactionsResp {
 	now := time.Now()
 
 	return []TransactionsResp{{
@@ -231,7 +264,7 @@ func GetTransactionsResponses(height []uint64) []TransactionsResp {
 	}}
 }
 
-func GetBlocksResponses(height []uint64) []BlockResp {
+func GetBlocksResponses(height [2]uint64) []BlockResp {
 	now := time.Now()
 	return []BlockResp{{
 		Hash:   "0x9291d0465056465420ee87ce768527b320de496a6b6a75f84c14622043d6d413",
@@ -244,7 +277,7 @@ func GetBlocksResponses(height []uint64) []BlockResp {
 	}}
 }
 
-func GetEventsResponses(height []uint64) [][]EventsResp {
+func GetEventsResponses(height [2]uint64) [][]EventsResp {
 	return [][]EventsResp{{{
 		Index:          0,
 		ExtrinsicIndex: 0,
@@ -368,4 +401,12 @@ func GetEventsResponses(height []uint64) [][]EventsResp {
 		Amount:     "10000000",
 		AmountText: "0.00001DOT",
 	}}}
+}
+
+func GetMetaResponses(height [2]uint64) []MetaResp {
+	return []MetaResp{{
+		Era: 352,
+	}, {
+		Era: 231,
+	}}
 }

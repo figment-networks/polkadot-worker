@@ -8,6 +8,7 @@ import (
 	"github.com/figment-networks/polkadot-worker/proxy"
 	"github.com/figment-networks/polkadot-worker/utils"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 	"go.uber.org/zap"
@@ -29,10 +30,12 @@ type TransactionMapperTest struct {
 
 	Blocks       []utils.BlockResp
 	Events       [][]utils.EventsResp
+	Metas        []utils.MetaResp
 	Transactions []utils.TransactionsResp
 
 	BlockResponse        *blockpb.GetByHeightResponse
 	EventsResponse       *eventpb.GetByHeightResponse
+	MetaResponse         *chainpb.GetMetaByHeightResponse
 	TransactionsResponse *transactionpb.GetByHeightResponse
 
 	Log *zap.SugaredLogger
@@ -47,17 +50,19 @@ func (tm *TransactionMapperTest) SetupTest() {
 	tm.Exp = 12
 	tm.Version = "0.0.1"
 
-	height := []uint64{123, 321}
+	height := [2]uint64{123, 321}
 
 	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(tm.Exp)), nil)
 	tm.Divider = new(big.Float).SetFloat64(float64(div.Int64()))
 
 	tm.Blocks = utils.GetBlocksResponses(height)
 	tm.Events = utils.GetEventsResponses(height)
+	tm.Metas = utils.GetMetaResponses(height)
 	tm.Transactions = utils.GetTransactionsResponses(height)
 
 	tm.BlockResponse = utils.BlockResponse(tm.Blocks[0])
 	tm.EventsResponse = utils.EventsResponse(tm.Events[0])
+	tm.MetaResponse = utils.MetaResponse(tm.Metas[0])
 	tm.TransactionsResponse = utils.TransactionsResponse(tm.Transactions[0])
 
 	log, err := zap.NewDevelopment()
@@ -69,17 +74,22 @@ func (tm *TransactionMapperTest) SetupTest() {
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_EmptyResponse() {
-	transactions, err := tm.TransactionsMapper(tm.Log, nil, tm.EventsResponse, tm.TransactionsResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, nil, tm.EventsResponse, tm.MetaResponse, tm.TransactionsResponse)
 
 	tm.Require().Nil(transactions)
 	tm.Require().Nil(err)
 
-	transactions, err = tm.TransactionsMapper(tm.Log, tm.BlockResponse, nil, tm.TransactionsResponse)
+	transactions, err = tm.TransactionsMapper(tm.Log, tm.BlockResponse, nil, tm.MetaResponse, tm.TransactionsResponse)
 
 	tm.Require().Nil(transactions)
 	tm.Require().Nil(err)
 
-	transactions, err = tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, nil)
+	transactions, err = tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, nil, tm.TransactionsResponse)
+
+	tm.Require().Nil(transactions)
+	tm.Require().Nil(err)
+
+	transactions, err = tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.MetaResponse, nil)
 
 	tm.Require().Nil(transactions)
 	tm.Require().Nil(err)
@@ -88,7 +98,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_EmptyResponse() {
 func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
 	tm.TransactionsResponse.Transactions[0].Time = "[object Object]"
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.MetaResponse, tm.TransactionsResponse)
 
 	tm.Require().Nil(transactions)
 
@@ -99,7 +109,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
 func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() {
 	tm.TransactionsResponse.Transactions[0].PartialFee = "bad"
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.MetaResponse, tm.TransactionsResponse)
 
 	tm.Require().Nil(transactions)
 
@@ -110,7 +120,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() 
 func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
 	tm.TransactionsResponse.Transactions[0].Tip = "bad"
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.MetaResponse, tm.TransactionsResponse)
 
 	tm.Require().Nil(transactions)
 
@@ -119,14 +129,14 @@ func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.TransactionsResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.MetaResponse, tm.TransactionsResponse)
 
 	tm.Require().Nil(err)
 
 	tm.Require().Len(transactions, 1)
 
 	expectedEvents := tm.Events[0][1:]
-	utils.ValidateTransactions(&tm.Suite, *transactions[0], tm.Blocks[0], tm.Transactions[0], expectedEvents, tm.ChainID, tm.Currency, int32(tm.Exp))
+	utils.ValidateTransactions(&tm.Suite, *transactions[0], tm.Blocks[0], tm.Transactions[0], expectedEvents, ic.MetaResponse[0], tm.ChainID, tm.Currency, int32(tm.Exp))
 }
 
 func TestTransactionMapper(t *testing.T) {

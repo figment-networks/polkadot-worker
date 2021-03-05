@@ -13,6 +13,7 @@ import (
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
@@ -45,14 +46,14 @@ func New(exp int, chainID, currency, version string) *TransactionMapper {
 
 // TransactionsMapper maps Block and Transactions response into database Transcations struct
 func (m *TransactionMapper) TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse,
-	transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
+	metaRes *chainpb.GetMetaByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
 	var transactions []*structs.Transaction
 	transactionMap := make(map[string]struct{})
 
 	timer := metrics.NewTimer(proxy.TransactionConversionDuration)
 	defer timer.ObserveDuration()
 
-	if blockRes == nil || eventRes == nil || transactionRes == nil {
+	if blockRes == nil || eventRes == nil || metaRes == nil || transactionRes == nil {
 		return nil, nil
 	}
 
@@ -80,6 +81,7 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.SugaredLogger, blockRes 
 			Hash:      t.Hash,
 			BlockHash: blockRes.Block.BlockHash,
 			Height:    uint64(blockRes.Block.Header.Height),
+			Epoch:     strconv.Itoa(int(metaRes.Era)),
 			ChainID:   m.chainID,
 			Time:      *time,
 			Fee:       fee,
