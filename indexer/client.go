@@ -212,6 +212,8 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 		return
 	}
 
+	fmt.Println("get transactions start", hr.StartHeight, "end:", hr.EndHeight)
+
 	if hr.StartHeight > hr.EndHeight {
 		c.log.Debug("Cannot unmarshal payload", zap.String("contents", string(tr.Payload)))
 		stream.Send(cStructs.TaskResponse{
@@ -233,6 +235,7 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
 	if err := c.sendTransactionsInRange(ctx, hr, out); err != nil {
+		fmt.Println("err:", err.Error())
 		stream.Send(cStructs.TaskResponse{
 			Id: tr.Id,
 			Error: cStructs.TaskError{
