@@ -116,7 +116,7 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 		}
 
 		switch v {
-		case "account", "approving", "multisig", "authority_id":
+		case "account", "approving", "authority_id", "multisig", "stash", "unvested":
 			if accountID, err := getAccountID(ev.Data[i]); err == nil {
 				e.accountsID = append(e.accountsID, accountID)
 			}
@@ -124,7 +124,7 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 			e.eventType = []string{"error"}
 		case "info", "tip_hash", "call_hash", "index":
 			break
-		case "from", "stash", "unvested":
+		case "from":
 			e.senderAccountID, err = getAccountID(ev.Data[i])
 		case "to", "who":
 			e.recipientAccountID, err = getAccountID(ev.Data[i])
