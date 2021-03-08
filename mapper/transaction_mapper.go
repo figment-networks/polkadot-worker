@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/figment-networks/polkadot-worker/proxy"
@@ -102,13 +103,32 @@ func isTransactionUnique(transactionMap map[string]struct{}, hash string) bool {
 }
 
 func parseTime(timeStr string) (*time.Time, error) {
-	timeInt, err := strconv.Atoi(timeStr)
-	if err != nil {
-		return nil, errors.Wrap(err, "Could not parse transaction time")
+	var err error
+	var sec, nsec int
+
+	if strings.Contains(timeStr, ".") {
+		if slice := strings.Split(timeStr, "."); len(slice) > 1 {
+			if nsec, err = parseInt(slice[1]); err != nil {
+				return nil, err
+			}
+			timeStr = slice[0]
+		}
 	}
 
-	time := time.Unix(int64(timeInt), 0)
+	if sec, err = parseInt(timeStr); err != nil {
+		return nil, err
+	}
+
+	time := time.Unix(int64(sec), int64(nsec))
 	return &time, nil
+}
+
+func parseInt(str string) (int, error) {
+	result, err := strconv.Atoi(str)
+	if err != nil {
+		return 0, errors.Wrap(err, "Could not parse transaction time")
+	}
+	return result, nil
 }
 
 func (m *TransactionMapper) getTransactionFee(partialFeeStr, tipStr string) ([]structs.TransactionAmount, error) {

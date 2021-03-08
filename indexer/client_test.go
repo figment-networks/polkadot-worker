@@ -34,7 +34,7 @@ type IndexerClientTest struct {
 	ReqID                uuid.UUID
 	BlockResponse        []utils.BlockResp
 	EventsResponse       [][]utils.EventsResp
-	TransactionsResponse [][]utils.TransactionsResp
+	TransactionsResponse []utils.TransactionsResp
 
 	ChainID     string
 	Currency    string
@@ -120,7 +120,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 			err := json.Unmarshal(s.Payload, &transaction)
 			ic.Require().Nil(err)
 
-			expectedEvents := [][]utils.EventsResp{ic.EventsResponse[0][1:]}
+			expectedEvents := ic.EventsResponse[0][1:]
 			utils.ValidateTransactions(&ic.Suite, transaction, ic.BlockResponse[0], ic.TransactionsResponse[0], expectedEvents, ic.ChainID, ic.Currency, int32(ic.Exp))
 			transactionFounded = true
 			break
@@ -342,12 +342,12 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 			ic.Require().Nil(err)
 
 			switch transaction.Hash {
-			case ic.TransactionsResponse[0][0].Hash:
-				expectedEvents := [][]utils.EventsResp{ic.EventsResponse[0][1:]}
+			case ic.TransactionsResponse[0].Hash:
+				expectedEvents := ic.EventsResponse[0][1:]
 				utils.ValidateTransactions(&ic.Suite, transaction, ic.BlockResponse[0], ic.TransactionsResponse[0], expectedEvents, ic.ChainID, ic.Currency, int32(ic.Exp))
 				break
-			case ic.TransactionsResponse[1][0].Hash:
-				expectedEvents := [][]utils.EventsResp{ic.EventsResponse[1][1:]}
+			case ic.TransactionsResponse[1].Hash:
+				expectedEvents := ic.EventsResponse[1][1:]
 				utils.ValidateTransactions(&ic.Suite, transaction, ic.BlockResponse[1], ic.TransactionsResponse[1], expectedEvents, ic.ChainID, ic.Currency, int32(ic.Exp))
 			}
 			countTransaction++
@@ -532,7 +532,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetEventByHeightError() {
 }
 
 func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
-	ic.TransactionsResponse[0][0].Fee = "bad"
+	ic.TransactionsResponse[0].Fee = "bad"
 
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)

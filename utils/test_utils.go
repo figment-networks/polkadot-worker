@@ -40,7 +40,7 @@ type EventsResp struct {
 	Section        string
 	EventData      []EventData
 
-	AccountID   string
+	AccountsID  []string
 	Additional  [][]string
 	Amount      string
 	AmountText  string
@@ -97,95 +97,85 @@ type TransactionsResp struct {
 	FeeAmountTxt string
 }
 
-func TransactionsResponse(resp []TransactionsResp) *transactionpb.GetByHeightResponse {
-	transactions := make([]*transactionpb.Transaction, len(resp))
-	for i, t := range resp {
-		transactions[i] = &transactionpb.Transaction{
-			ExtrinsicIndex: t.Index,
-			Args:           t.Args,
-			Hash:           t.Hash,
-			IsSuccess:      t.IsSuccess,
-			PartialFee:     t.Fee,
-			// Raw:            t.Raw,
-			Nonce:   t.Nonce,
-			Method:  t.Method,
-			Section: t.Section,
-			Tip:     t.Tip,
-			Time:    t.Time,
-		}
-	}
+func TransactionsResponse(resp TransactionsResp) *transactionpb.GetByHeightResponse {
 	return &transactionpb.GetByHeightResponse{
-		Transactions: transactions,
+		Transactions: []*transactionpb.Transaction{{
+			ExtrinsicIndex: resp.Index,
+			Args:           resp.Args,
+			Hash:           resp.Hash,
+			IsSuccess:      resp.IsSuccess,
+			PartialFee:     resp.Fee,
+			Raw:            resp.Raw,
+			Nonce:          resp.Nonce,
+			Method:         resp.Method,
+			Section:        resp.Section,
+			Tip:            resp.Tip,
+			Time:           resp.Time,
+		}},
 	}
 }
 
-func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp []TransactionsResp, evResp [][]EventsResp, chainID, currency string, exp int32) {
+func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp TransactionsResp, evResp []EventsResp, chainID, currency string, exp int32) {
 	sut.Require().Equal(bResp.Hash, transaction.BlockHash)
 	sut.Require().EqualValues(bResp.Height, transaction.Height)
+	sut.Require().EqualValues(bResp.Height, transaction.Height)
 
-	for i, t := range trResp {
-		sut.Require().Equal(t.Hash, transaction.Hash)
-		sut.Require().Equal(chainID, transaction.ChainID)
-		sut.Require().Equal(t.Time, strconv.Itoa(int(transaction.Time.Unix())))
-		sut.Require().Equal("0.0.1", transaction.Version)
-		sut.Require().Equal(!t.IsSuccess, transaction.HasErrors)
+	sut.Require().Equal(trResp.Hash, transaction.Hash)
+	sut.Require().Equal(chainID, transaction.ChainID)
+	sut.Require().Equal(trResp.Time, strconv.Itoa(int(transaction.Time.Unix())))
+	sut.Require().Equal("0.0.1", transaction.Version)
+	sut.Require().Equal(!trResp.IsSuccess, transaction.HasErrors)
 
-		feeNumeric, ok := new(big.Int).SetString(t.FeeAmount, 10)
-		sut.Require().True(ok)
-		sut.Require().Equal(feeNumeric, transaction.Fee[0].Numeric)
-		sut.Require().Equal(t.FeeAmountTxt, transaction.Fee[0].Text)
-		sut.Require().Equal(currency, transaction.Fee[0].Currency)
-		sut.Require().EqualValues(exp, transaction.Fee[0].Exp)
+	validateAmount(sut, &transaction.Fee[0], int(exp), trResp.FeeAmount, trResp.FeeAmountTxt, currency)
 
-		sut.Require().Len(transaction.Events, len(evResp[i]))
-		for i, e := range evResp[i] {
-			sut.Require().Equal(strconv.Itoa(int(e.Index)), transaction.Events[i].ID)
-			// sub.Require().Equal(kind, transaction.Events[i].Kind)
-			// sub.Require().Equal(action, transaction.Events[i].Sub[0].Action)
+	sut.Require().Len(transaction.Events, len(evResp))
+	for i, e := range evResp {
+		sut.Require().Equal(strconv.Itoa(int(e.Index)), transaction.Events[i].ID)
 
-			expectedType := e.Method
-			for _, d := range e.EventData {
-				if d.Name == "DispatchError" {
-					expectedType = "error"
-				}
+		expectedType := e.Method
+		for _, d := range e.EventData {
+			if d.Name == "DispatchError" {
+				expectedType = "error"
 			}
+		}
 
-			event := transaction.Events[i].Sub[0]
-			sut.Require().Equal(e.Section, event.Module)
-			sut.Require().Equal([]string{expectedType}, event.Type)
-			sut.Require().Equal(t.Time, strconv.Itoa(int(event.Completion.Unix())))
+		event := transaction.Events[i].Sub[0]
+		sut.Require().Equal(e.Section, event.Module)
+		sut.Require().Equal([]string{expectedType}, event.Type)
+		sut.Require().Equal(trResp.Time, strconv.Itoa(int(event.Completion.Unix())))
 
-			if a, ok := event.Amount["0"]; ok {
-				validateAmount(sut, &a, int(exp), e.Amount, e.AmountText, currency)
+		if a, ok := event.Amount["0"]; ok {
+			validateAmount(sut, &a, int(exp), e.Amount, e.AmountText, currency)
+		}
+
+		if accounts, ok := event.Node["versions"]; ok {
+			for i, account := range accounts {
+				sut.Require().Equal(e.AccountsID[i], account.ID)
 			}
+		}
 
-			if account, ok := event.Node["versions"]; ok {
-				sut.Require().Equal(e.AccountID, account[0].ID)
-			}
+		if account, ok := event.Node["sender"]; ok {
+			sut.Require().Equal(e.SenderID, account[0].ID)
+		}
 
-			if account, ok := event.Node["sender"]; ok {
-				sut.Require().Equal(e.SenderID, account[0].ID)
-			}
+		if account, ok := event.Node["recipient"]; ok {
+			sut.Require().Equal(e.RecipientID, account[0].ID)
 
-			if account, ok := event.Node["recipient"]; ok {
-				sut.Require().Equal(e.RecipientID, account[0].ID)
+			transfers := event.Transfers[e.RecipientID]
+			sut.Require().Equal(e.RecipientID, transfers[0].Account.ID)
 
-				transfers := event.Transfers[e.RecipientID]
-				sut.Require().Equal(e.RecipientID, transfers[0].Account.ID)
+			validateAmount(sut, &transfers[0].Amounts[0], int(exp), e.Amount, e.AmountText, currency)
+		}
 
-				validateAmount(sut, &transfers[0].Amounts[0], int(exp), e.Amount, e.AmountText, currency)
-			}
-
-			for _, aa := range e.Additional {
-				for _, a := range aa {
-					founded := false
-					for j := 0; j < len(e.Additional); j++ {
-						if sut.Contains(event.Additional["attributes"][j], a) {
-							founded = true
-						}
+		for _, aa := range e.Additional {
+			for _, a := range aa {
+				founded := false
+				for j := 0; j < len(e.Additional); j++ {
+					if sut.Contains(event.Additional["attributes"][j], a) {
+						founded = true
 					}
-					sut.Require().True(founded)
 				}
+				sut.Require().True(founded)
 			}
 		}
 	}
@@ -205,10 +195,10 @@ func validateAmount(sut *suite.Suite, amount *structs.TransactionAmount, exp int
 	sut.Require().EqualValues(exp, amount.Exp)
 }
 
-func GetTransactionsResponses(height []uint64) [][]TransactionsResp {
+func GetTransactionsResponses(height []uint64) []TransactionsResp {
 	now := time.Now()
 
-	return [][]TransactionsResp{{{
+	return []TransactionsResp{{
 		Index:     1,
 		Args:      "",
 		Fee:       "1000",
@@ -223,7 +213,7 @@ func GetTransactionsResponses(height []uint64) [][]TransactionsResp {
 
 		FeeAmount:    "1001",
 		FeeAmountTxt: "0.000000001001DOT",
-	}}, {{
+	}, {
 		Index:     1,
 		Args:      "",
 		Fee:       "156000000",
@@ -238,7 +228,7 @@ func GetTransactionsResponses(height []uint64) [][]TransactionsResp {
 
 		FeeAmount:    "156000000",
 		FeeAmountTxt: "0.000156DOT",
-	}}}
+	}}
 }
 
 func GetBlocksResponses(height []uint64) []BlockResp {
@@ -278,7 +268,7 @@ func GetEventsResponses(height []uint64) [][]EventsResp {
 			Value: "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
 		}},
 
-		AccountID: "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
+		AccountsID: []string{"14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV"},
 	}, {
 		Index:          2,
 		ExtrinsicIndex: 1,
@@ -294,7 +284,7 @@ func GetEventsResponses(height []uint64) [][]EventsResp {
 			Value: "10000000000",
 		}},
 
-		AccountID:  "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV",
+		AccountsID: []string{"14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV"},
 		Amount:     "10000000000",
 		AmountText: "0.01DOT",
 	}, {
@@ -374,7 +364,7 @@ func GetEventsResponses(height []uint64) [][]EventsResp {
 			Value: "10000000",
 		}},
 
-		AccountID:  "14DzyWx1Xq7ZqEjXMWJp6jRUq34hAXJHuj8wts3kRvikEvo5",
+		AccountsID: []string{"14DzyWx1Xq7ZqEjXMWJp6jRUq34hAXJHuj8wts3kRvikEvo5"},
 		Amount:     "10000000",
 		AmountText: "0.00001DOT",
 	}}}

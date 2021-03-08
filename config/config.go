@@ -2,9 +2,9 @@ package config
 
 // Config struct for config.yml
 type Config struct {
-	Worker                WorkerConfig
-	ProxyBaseURL          string `json:"proxy_base_url"`
-	IndexerManagerBaseURL string `json:"indexer_manager_base_url"`
+	Worker         WorkerConfig
+	ProxyBaseURL   string         `json:"proxy_base_url"`
+	IndexerManager IndexerManager `json:"indexer_manager"`
 }
 
 // WorkerConfig config
@@ -15,12 +15,13 @@ type WorkerConfig struct {
 	LogLevel string `json:"log_level"`
 	Network  string `json:"network"`
 	Version  string `json:"version"`
-	Address  WorkerAddress
+	Host     string `json:"host"`
+	Port     string `json:"port"`
 }
 
-// WorkerAddress host and port
-type WorkerAddress struct {
-	Host     string `json:"host"`
-	GRCPPort string `json:"grcp_port"`
-	HTTPPort string `json:"http_port"`
+// IndexerManager base url and listening port
+type IndexerManager struct {
+	BaseURL    string `json:"base_url"`
+	Host       string `json:"host"`
+	ListenPort string `json:"listen_port"`
 }
