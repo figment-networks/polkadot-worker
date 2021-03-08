@@ -21,7 +21,7 @@ type WorkerConfig struct {
 
 // IndexerManager base url and listening port
 type IndexerManager struct {
-	BaseURL string `json:"base_url"`
-	Host    string `json:"host"`
-	Port    string `json:"port"`
+	BaseURL    string `json:"base_url"`
+	Host       string `json:"host"`
+	ListenPort string `json:"listen_port"`
 }

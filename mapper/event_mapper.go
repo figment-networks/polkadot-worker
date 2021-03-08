@@ -60,7 +60,7 @@ func isEventUnique(evIndexMap map[int64]struct{}, evIdx int64) bool {
 type event struct {
 	structs.SubsetEvent
 
-	accountsID         []string
+	accountIDs         []string
 	recipientAccountID string
 	senderAccountID    string
 	value              string
@@ -118,7 +118,7 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 		switch v {
 		case "account", "approving", "authority_id", "multisig", "stash", "unvested":
 			if accountID, err := getAccountID(ev.Data[i]); err == nil {
-				e.accountsID = append(e.accountsID, accountID)
+				e.accountIDs = append(e.accountIDs, accountID)
 			}
 		case "error":
 			e.eventType = []string{"error"}
@@ -217,19 +217,19 @@ func (e *event) appendAmount(amount *structs.TransactionAmount) {
 }
 
 func (e *event) appendAccounts() {
-	if e.accountsID == nil && e.senderAccountID == "" && e.recipientAccountID == "" {
+	if e.accountIDs == nil && e.senderAccountID == "" && e.recipientAccountID == "" {
 		return
 	}
 
 	e.Node = make(map[string][]structs.Account)
 
-	accounts := make([]structs.Account, len(e.accountsID))
-	for i, accountID := range e.accountsID {
+	accounts := make([]structs.Account, len(e.accountIDs))
+	for i, accountID := range e.accountIDs {
 		accounts[i] = structs.Account{
 			ID: accountID,
 		}
 	}
-	if e.accountsID != nil {
+	if e.accountIDs != nil {
 		e.Node["versions"] = accounts
 	}
 

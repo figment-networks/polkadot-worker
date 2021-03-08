@@ -125,7 +125,7 @@ func registerWorker(ctx context.Context, log *zap.SugaredLogger, cfg *config.Con
 		log.Errorf("Error while creating new random id for polkadot-worker: %s", err.Error())
 	}
 
-	workerAddress := cfg.IndexerManager.Host + cfg.IndexerManager.Port
+	workerAddress := cfg.IndexerManager.Host + cfg.IndexerManager.ListenPort
 
 	c := connectivity.NewWorkerConnections(workerRunID.String(), workerAddress, cfg.Worker.Network, cfg.Worker.ChainID, "0.0.1")
 
@@ -157,7 +157,7 @@ func handleHTTP(log *zap.SugaredLogger, cfg *config.Config) {
 	log.Infof("HTTP handler listening on port %s", cfg.Worker.Port)
 
 	if err := s.ListenAndServe(); err != nil {
-		log.Error("Error while listening on %s port", cfg.Worker.Port, zap.Error(err))
+		log.Error("Error while listening on %s port %s", cfg.Worker.Port, zap.Error(err))
 	}
 }
 
@@ -175,11 +175,11 @@ func serveGRPC(log *zap.SugaredLogger, cfg config.Config) {
 	grpcProtoIndexer.RegisterIndexerServiceServer(grpcServer, indexer)
 
 	host := cfg.Worker.Host
-	port := cfg.IndexerManager.Port
+	port := cfg.IndexerManager.ListenPort
 
 	lis, err := net.Listen("tcp", host+port)
 	if err != nil {
-		log.Errorf("Error while listening on port %s %s", port, zap.Error(err))
+		log.Errorf("Error while listening on %s port %s", port, zap.Error(err))
 		return
 	}
 
