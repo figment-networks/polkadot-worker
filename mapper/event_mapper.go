@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var descRegexp = regexp.MustCompile(`\\\[[a-z,_ ]*\\\]`)
+var descRegexp = regexp.MustCompile(`\\\[[a-z_, ]*\\\]`)
 
 func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, currency string, divider *big.Float, exp int) (eventMap, error) {
 	evIndexMap := make(map[int64]struct{})
@@ -77,12 +77,10 @@ func getEvent(log *zap.SugaredLogger, evpb *eventpb.Event, currency string, exp 
 		return structs.SubsetEvent{}, err
 	}
 
-	amount, err := getAmount(e.value, exp, currency, divider)
-	if err != nil {
+	if err := e.appendAmounts(exp, currency, divider); err != nil {
 		return structs.SubsetEvent{}, err
 	}
 
-	e.appendAmount(amount)
 	e.appendAccounts()
 
 	e.Module = evpb.Section
@@ -120,18 +118,20 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 			if accountID, err := getAccountID(ev.Data[i]); err == nil {
 				e.accountIDs = append(e.accountIDs, accountID)
 			}
-		case "error":
-			e.eventType = []string{"error"}
-		case "info", "tip_hash", "call_hash", "index":
-			break
 		case "from":
 			e.senderAccountID, err = getAccountID(ev.Data[i])
 		case "to", "who":
 			e.recipientAccountID, err = getAccountID(ev.Data[i])
 		case "deposit", "free_balance", "value", "balance", "amount":
-			e.value, err = getBalance(ev.Data[i])
+			if balance, err := getBalance(ev.Data[i]); err == nil {
+				e.value = balance
+			}
+		case "error":
+			e.eventType = []string{"error"}
+		case "info", "tip_hash", "call_hash", "index":
+			break
 		default:
-			return fmt.Errorf("Unknown value to parse event %q", v)
+			return fmt.Errorf("Unknown value to parse event %q values: %v", v, values)
 		}
 
 		if err != nil {
@@ -205,15 +205,21 @@ func getAmount(value string, exp int, currency string, divider *big.Float) (*str
 	}, nil
 }
 
-func (e *event) appendAmount(amount *structs.TransactionAmount) {
-	if amount == nil {
-		return
+func (e *event) appendAmounts(exp int, currency string, divider *big.Float) error {
+	if e.value == "" {
+		return nil
+	}
+
+	amount, err := getAmount(e.value, exp, currency, divider)
+	if err != nil {
+		return err
 	}
 
 	e.amount = *amount
 
 	e.Amount = make(map[string]structs.TransactionAmount)
 	e.Amount["0"] = *amount
+	return nil
 }
 
 func (e *event) appendAccounts() {
