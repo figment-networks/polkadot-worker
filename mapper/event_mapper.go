@@ -63,7 +63,7 @@ type event struct {
 	accountIDs         []string
 	recipientAccountID string
 	senderAccountID    string
-	value              string
+	values             []string
 	amount             structs.TransactionAmount
 
 	currency  string
@@ -114,21 +114,27 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 		}
 
 		switch v {
-		case "account", "approving", "authority_id", "multisig", "stash", "unvested":
+		case "account", "approving", "authority_id", "multisig", "stash", "unvested", "target",
+			"sub", "main", "cancelling", "lost", "rescuer", "sender", "voter", "founder", "candidate",
+			"candidate_id", "vouching", "nominator", "validator", "finder":
 			if accountID, err := getAccountID(ev.Data[i]); err == nil {
 				e.accountIDs = append(e.accountIDs, accountID)
 			}
 		case "from":
 			e.senderAccountID, err = getAccountID(ev.Data[i])
-		case "to", "who":
+		case "to", "who", "beneficiary":
 			e.recipientAccountID, err = getAccountID(ev.Data[i])
-		case "deposit", "free_balance", "value", "balance", "amount":
+		case "deposit", "free_balance", "value", "balance", "amount", "offer", "validator_payout",
+			"remainder", "payout", "award", "slashed", "budget_remaining":
 			if balance, err := getBalance(ev.Data[i]); err == nil {
-				e.value = balance
+				e.values = append(e.values, balance)
 			}
 		case "error":
 			e.eventType = []string{"error"}
-		case "info", "tip_hash", "call_hash", "index":
+		case "info", "tip_hash", "call_hash", "index", "new_members", "proposal_index", "compute",
+			"destination_status", "is_ok", "threshold", "until", "authority_set", "registrar_index",
+			"timepoint", "when", "task", "id", "result", "judged", "era_index", "session_index",
+			"proposal_hash", "yes", "no":
 			break
 		default:
 			return fmt.Errorf("Unknown value to parse event %q values: %v", v, values)
@@ -206,19 +212,24 @@ func getAmount(value string, exp int, currency string, divider *big.Float) (*str
 }
 
 func (e *event) appendAmounts(exp int, currency string, divider *big.Float) error {
-	if e.value == "" {
+	valuesLen := len(e.values)
+	if valuesLen == 0 {
 		return nil
 	}
 
-	amount, err := getAmount(e.value, exp, currency, divider)
-	if err != nil {
-		return err
+	e.Amount = make(map[string]structs.TransactionAmount)
+	for i, value := range e.values {
+		amount, err := getAmount(value, exp, currency, divider)
+		if err != nil {
+			return err
+		}
+
+		e.Amount[strconv.Itoa(i)] = *amount
+		if valuesLen == 1 && i == 1 {
+			e.amount = *amount
+		}
 	}
 
-	e.amount = *amount
-
-	e.Amount = make(map[string]structs.TransactionAmount)
-	e.Amount["0"] = *amount
 	return nil
 }
 

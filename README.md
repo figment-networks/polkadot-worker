@@ -35,7 +35,6 @@ Worker also need some basic config:
             "listen_port": ":3000"
         },
         "proxy_base_url": "localhost:50051",
-        },
         "worker": {
             "chain_id": "Polkadot",
             "currency": "DOT",
