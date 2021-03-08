@@ -29,7 +29,7 @@ type TransactionMapperTest struct {
 
 	Blocks       []utils.BlockResp
 	Events       [][]utils.EventsResp
-	Transactions [][]utils.TransactionsResp
+	Transactions []utils.TransactionsResp
 
 	BlockResponse        *blockpb.GetByHeightResponse
 	EventsResponse       *eventpb.GetByHeightResponse
@@ -125,7 +125,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
 
 	tm.Require().Len(transactions, 1)
 
-	expectedEvents := [][]utils.EventsResp{tm.Events[0][1:]}
+	expectedEvents := tm.Events[0][1:]
 	utils.ValidateTransactions(&tm.Suite, *transactions[0], tm.Blocks[0], tm.Transactions[0], expectedEvents, tm.ChainID, tm.Currency, int32(tm.Exp))
 }
 
