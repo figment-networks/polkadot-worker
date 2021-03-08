@@ -77,22 +77,26 @@ func (tm *TransactionMapperTest) TestTransactionMapper_EmptyResponse() {
 	transactions, err := tm.TransactionsMapper(tm.Log, nil, tm.EventsResponse, tm.MetaResponse, tm.TransactionsResponse)
 
 	tm.Require().Nil(transactions)
-	tm.Require().Nil(err)
+	tm.Require().NotNil(err)
+	tm.Require().Contains("One of required proxy response is missing", err.Error())
 
 	transactions, err = tm.TransactionsMapper(tm.Log, tm.BlockResponse, nil, tm.MetaResponse, tm.TransactionsResponse)
 
 	tm.Require().Nil(transactions)
-	tm.Require().Nil(err)
+	tm.Require().NotNil(err)
+	tm.Require().Contains("One of required proxy response is missing", err.Error())
 
 	transactions, err = tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, nil, tm.TransactionsResponse)
 
 	tm.Require().Nil(transactions)
-	tm.Require().Nil(err)
+	tm.Require().NotNil(err)
+	tm.Require().Contains("One of required proxy response is missing", err.Error())
 
 	transactions, err = tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.MetaResponse, nil)
 
 	tm.Require().Nil(transactions)
-	tm.Require().Nil(err)
+	tm.Require().NotNil(err)
+	tm.Require().Contains("One of required proxy response is missing", err.Error())
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {

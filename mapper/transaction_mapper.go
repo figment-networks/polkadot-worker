@@ -54,7 +54,7 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.SugaredLogger, blockRes 
 	defer timer.ObserveDuration()
 
 	if blockRes == nil || eventRes == nil || metaRes == nil || transactionRes == nil {
-		return nil, nil
+		return nil, errors.New("One of required proxy response is missing")
 	}
 
 	allEvents, err := parseEvents(log, eventRes, m.currency, m.div, m.exp)
@@ -81,7 +81,7 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.SugaredLogger, blockRes 
 			Hash:      t.Hash,
 			BlockHash: blockRes.Block.BlockHash,
 			Height:    uint64(blockRes.Block.Header.Height),
-			Epoch:     strconv.Itoa(int(metaRes.Era)),
+			Epoch:     strconv.FormatInt(metaRes.Era, 10),
 			ChainID:   m.chainID,
 			Time:      *time,
 			Fee:       fee,
