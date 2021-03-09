@@ -14,6 +14,7 @@ import (
 	"github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
+	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
@@ -72,6 +73,194 @@ func (ic *IndexerClientTest) SetupTest() {
 
 	ic.Client = indexer.NewClient(log.Sugar(), &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, ic.Version)
 	ic.ProxyClient = &proxyClientMock
+}
+
+func (ic *IndexerClientTest) TestGetAccountBalance_OK() {
+	account := "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV"
+	height := uint64(23452)
+	resp := &accountpb.GetByHeightResponse{
+		Account: &accountpb.Account{
+			Nonce:      3452,
+			FeeFrozen:  "12",
+			Free:       "1234",
+			Reserved:   "20",
+			MiscFrozen: "24",
+		},
+	}
+	ic.ProxyClient.On("GetAccountBalance", mock.AnythingOfType("*context.cancelCtx"), account, height).Return(resp, nil)
+
+	req := structs.HeightAccount{
+		Account: account,
+		Height:  height,
+	}
+
+	var buffer bytes.Buffer
+	err := json.NewEncoder(&buffer).Encode(req)
+	ic.Require().Nil(err)
+
+	tr := cStructs.TaskRequest{
+		Id:      ic.ReqID,
+		Type:    structs.ReqIDAccountBalance,
+		Payload: make([]byte, buffer.Len()),
+	}
+	buffer.Read(tr.Payload)
+
+	stream := cStructs.NewStreamAccess()
+	defer stream.Close()
+
+	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
+	defer ic.Require().Nil(ic.CloseStream(context.Background(), stream.StreamID))
+
+	stream.RequestListener <- tr
+
+	accountBalance, endFounded := false, false
+	for s := range stream.ResponseListener {
+		if ic.ReqID != s.Id {
+			continue
+		}
+
+		switch s.Type {
+		case "AccountBalance":
+			var resp structs.GetAccountBalanceResponse
+			err := json.Unmarshal(s.Payload, &resp)
+			ic.Require().Nil(err)
+
+			ic.Require().Equal(height, resp.Height)
+			ic.Require().Len(resp.Balances, 1)
+
+			balance := resp.Balances[0]
+			ic.Require().EqualValues(ic.Exp, balance.Exp)
+			ic.Require().Equal(ic.Currency, balance.Currency)
+			ic.Require().Equal("0.000000001234DOT", balance.Text)
+			ic.Require().Equal("1234", balance.Numeric.String())
+
+			accountBalance = true
+		case "END":
+			ic.Require().True(s.Final)
+			endFounded = true
+		}
+
+		if accountBalance && endFounded {
+			break
+		}
+	}
+}
+
+func (ic *IndexerClientTest) TestGetAccountBalance_ProxyError() {
+	account := "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV"
+	height := uint64(23452)
+
+	e := errors.New("new balance error")
+	ic.ProxyClient.On("GetAccountBalance", mock.AnythingOfType("*context.cancelCtx"), account, height).Return(&accountpb.GetByHeightResponse{}, e)
+
+	req := structs.HeightAccount{
+		Account: account,
+		Height:  height,
+	}
+
+	var buffer bytes.Buffer
+	err := json.NewEncoder(&buffer).Encode(req)
+	ic.Require().Nil(err)
+
+	tr := cStructs.TaskRequest{
+		Id:      ic.ReqID,
+		Type:    structs.ReqIDAccountBalance,
+		Payload: make([]byte, buffer.Len()),
+	}
+	buffer.Read(tr.Payload)
+
+	stream := cStructs.NewStreamAccess()
+	defer stream.Close()
+
+	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
+	defer ic.Require().Nil(ic.CloseStream(context.Background(), stream.StreamID))
+
+	stream.RequestListener <- tr
+
+	for response := range stream.ResponseListener {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
+			continue
+		}
+
+		ic.Require().True(response.Final)
+		ic.Require().Contains(response.Error.Msg, "Could not send Account Balance: new balance error")
+		return
+	}
+}
+
+func (ic *IndexerClientTest) TestGetAccountBalance_MapperError() {
+	account := "14coxGrE4uD8ZMascmAPXhvggwnp8bgdW2fFVWMZSqJEFxCV"
+	height := uint64(23452)
+	resp := &accountpb.GetByHeightResponse{
+		Account: &accountpb.Account{
+			Nonce:      3452,
+			FeeFrozen:  "12",
+			Free:       "bad",
+			Reserved:   "20",
+			MiscFrozen: "24",
+		},
+	}
+	ic.ProxyClient.On("GetAccountBalance", mock.AnythingOfType("*context.cancelCtx"), account, height).Return(resp, nil)
+
+	req := structs.HeightAccount{
+		Account: account,
+		Height:  height,
+	}
+
+	var buffer bytes.Buffer
+	err := json.NewEncoder(&buffer).Encode(req)
+	ic.Require().Nil(err)
+
+	tr := cStructs.TaskRequest{
+		Id:      ic.ReqID,
+		Type:    structs.ReqIDAccountBalance,
+		Payload: make([]byte, buffer.Len()),
+	}
+	buffer.Read(tr.Payload)
+
+	stream := cStructs.NewStreamAccess()
+	defer stream.Close()
+
+	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
+	defer ic.Require().Nil(ic.CloseStream(context.Background(), stream.StreamID))
+
+	stream.RequestListener <- tr
+
+	for response := range stream.ResponseListener {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
+			continue
+		}
+
+		ic.Require().True(response.Final)
+		ic.Require().Contains(response.Error.Msg, "Could not send Account Balance: Could not create transaction free amount from value \"bad\"")
+		return
+	}
+}
+
+func (ic *IndexerClientTest) TestGetAccountBalance_UnmarshalError() {
+	tr := cStructs.TaskRequest{
+		Id:      ic.ReqID,
+		Type:    structs.ReqIDAccountBalance,
+		Payload: nil,
+	}
+
+	stream := cStructs.NewStreamAccess()
+	defer stream.Close()
+
+	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
+	defer ic.CloseStream(context.Background(), stream.StreamID)
+
+	stream.RequestListener <- tr
+
+	for response := range stream.ResponseListener {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
+			continue
+		}
+
+		ic.Require().True(response.Final)
+		ic.Require().Contains(response.Error.Msg, "Cannot unmarshal payload: bad request")
+		return
+	}
 }
 
 func (ic *IndexerClientTest) TestGetLatest_OK() {
@@ -696,6 +885,11 @@ func TestIndexerClient(t *testing.T) {
 
 type proxyClientMock struct {
 	mock.Mock
+}
+
+func (m proxyClientMock) GetAccountBalance(ctx context.Context, account string, height uint64) (*accountpb.GetByHeightResponse, error) {
+	args := m.Called(ctx, account, height)
+	return args.Get(0).(*accountpb.GetByHeightResponse), args.Error(1)
 }
 
 func (m proxyClientMock) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error) {

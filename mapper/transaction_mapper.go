@@ -33,8 +33,8 @@ type TransactionMapper struct {
 	version  string
 }
 
-// New creates a new Transaction mapper
-func New(exp int, chainID, currency, version string) *TransactionMapper {
+// NewTransactionMapper creates a new Transaction mapper
+func NewTransactionMapper(exp int, chainID, currency, version string) *TransactionMapper {
 	return &TransactionMapper{
 		exp:      exp,
 		div:      initExpDivider(int64(exp)),
