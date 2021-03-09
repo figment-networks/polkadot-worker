@@ -9,6 +9,7 @@ import (
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
+
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -33,16 +34,16 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 			return nil, err
 		}
 
-		kind := ""
-		if event.Error != nil {
-			kind = "error"
+		transactionEvent := structs.TransactionEvent{
+			ID:  strconv.FormatInt(e.Index, 10),
+			Sub: []structs.SubsetEvent{event},
 		}
 
-		events[e.ExtrinsicIndex] = append(events[e.ExtrinsicIndex], structs.TransactionEvent{
-			ID:   strconv.FormatInt(e.Index, 10),
-			Kind: kind,
-			Sub:  []structs.SubsetEvent{event},
-		})
+		if event.Error != nil {
+			transactionEvent.Kind = "error"
+		}
+
+		events[e.ExtrinsicIndex] = append(events[e.ExtrinsicIndex], transactionEvent)
 
 	}
 
@@ -108,6 +109,7 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 		return err
 	}
 
+	i := 0
 	for i, v := range values {
 		if i >= dataLen {
 			return fmt.Errorf("Not enough data to parse all event values")
@@ -148,6 +150,10 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 	}
 
 	if dataLen > 0 {
+		for ; i < dataLen; i++ {
+			attributes[i] = fmt.Sprintf("%v", ev.Data[i])
+		}
+
 		e.Additional = make(map[string][]string)
 		e.Additional["attributes"] = attributes
 	}
@@ -225,7 +231,8 @@ func (e *event) appendAmounts(exp int, currency string, divider *big.Float) erro
 		}
 
 		e.Amount[strconv.Itoa(i)] = *amount
-		if valuesLen == 1 && i == 1 {
+		if valuesLen == 1 && i == 0 {
+			// am := *amount
 			e.amount = *amount
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
+
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

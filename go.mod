@@ -3,8 +3,8 @@ module github.com/figment-networks/polkadot-worker
 go 1.15
 
 require (
-	github.com/figment-networks/indexer-manager v0.0.9
-	github.com/figment-networks/indexing-engine v0.1.14
+	github.com/figment-networks/indexer-manager v0.1.0
+	github.com/figment-networks/indexing-engine v0.2.1
 	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210224172531-65528b7dd3f7
 	github.com/google/uuid v1.1.5
 	github.com/pkg/errors v0.9.1

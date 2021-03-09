@@ -94,10 +94,10 @@ github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1m
 github.com/envoyproxy/go-control-plane v0.9.9-0.20201210154907-fd9021fe5dad/go.mod h1:cXg6YxExXjJnVBQHBLXeUAgxn2UodCpnH306RInaBQk=
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
 github.com/erikstmartin/go-testdb v0.0.0-20160219214506-8d10e4a1bae5/go.mod h1:a2zkGnVExMxdzMo3M0Hi/3sEU+cWnZpSni0O6/Yb/P0=
-github.com/figment-networks/indexer-manager v0.0.9 h1:uMJu3EQKdIhAsHBaX9rhQ08L5kdHY4vT+4djUhC0V2I=
-github.com/figment-networks/indexer-manager v0.0.9/go.mod h1:8vD9n7nNsYzraQcS3aFj8li/8LSFWzYWu2zXrkSTgZQ=
-github.com/figment-networks/indexing-engine v0.1.14 h1:CUC2jJL9lfebzZ4TB+63UwmmKo3KIe8nsJywF2196HU=
-github.com/figment-networks/indexing-engine v0.1.14/go.mod h1:qNrfV0A+kpAprbHS/aK1CZU2OgmVr1xkug26DO2QbY8=
+github.com/figment-networks/indexer-manager v0.1.0 h1:Bqxep0njSKIpx/Tq1XxzB6lFNGZljc78MVY3lOwmZj0=
+github.com/figment-networks/indexer-manager v0.1.0/go.mod h1:EV9TDI4oC1X36n3YnXVs8GxhCzcuyegN/dnaMY0lt0g=
+github.com/figment-networks/indexing-engine v0.2.1 h1:P4i+z8jzTiqso+UAPfXQ2fQ4TZlO6rDgqZyLd4/wyc4=
+github.com/figment-networks/indexing-engine v0.2.1/go.mod h1:PxX1SoEGUoCkno1I3aDj1tynP1ySQomEkuzOZFIVHkI=
 github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210224172531-65528b7dd3f7 h1:JzR3rfVSctF57cbFJjmFekujLtrzHGcM5T19xAuln80=
 github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210224172531-65528b7dd3f7/go.mod h1:Uf48ek6W9HhZw6QIrW7HEfgGUanK+kbUTeCBZaB8/NM=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
