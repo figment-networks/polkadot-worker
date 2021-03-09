@@ -140,7 +140,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
 	tm.Require().Len(transactions, 1)
 
 	expectedEvents := tm.Events[0][1:]
-	utils.ValidateTransactions(&tm.Suite, *transactions[0], tm.Blocks[0], tm.Transactions[0], expectedEvents, ic.MetaResponse[0], tm.ChainID, tm.Currency, int32(tm.Exp))
+	utils.ValidateTransactions(&tm.Suite, *transactions[0], tm.Blocks[0], tm.Transactions[0], expectedEvents, tm.Metas[0], tm.ChainID, tm.Currency, int32(tm.Exp))
 }
 
 func TestTransactionMapper(t *testing.T) {

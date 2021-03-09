@@ -480,7 +480,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetBlockByHeightError() {
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Error while getting Transactions with given range: Error while getting transactions: new block error")
+		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: Error while getting transactions: new block error")
 		return
 	}
 }
@@ -527,9 +527,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetTransactionByHeightError() {
 
 		ic.Require().True(response.Final)
 
-		errMsg := response.Error.Msg
-		ic.Require().Contains(errMsg, "Error while getting Transactions with given range: Error while getting transactions")
-		ic.Require().Contains(errMsg, "new transaction error")
+		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: Error while getting transactions: new transaction error")
 		return
 	}
 }
@@ -577,10 +575,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetEventByHeightError() {
 			continue
 		}
 
-		errMsg := response.Error.Msg
-		ic.Require().Contains(errMsg, "Error while getting Transactions with given range: Error while getting transactions")
-		ic.Require().Contains(errMsg, "new event error one")
-		ic.Require().Contains(errMsg, "new event error two")
+		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: Error while getting transactions: new event error one , new event error two")
 		return
 	}
 }
@@ -623,7 +618,7 @@ func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Error while getting Transactions with given range: Error while getting transactions: Could not parse transaction partial fee \"bad\"")
+		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: Error while getting transactions: Could not parse transaction partial fee \"bad\"")
 		return
 	}
 }

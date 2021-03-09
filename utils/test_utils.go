@@ -126,38 +126,16 @@ func TransactionsResponse(resp TransactionsResp) *transactionpb.GetByHeightRespo
 	}
 }
 
-func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp []TransactionsResp, evResp [][]EventsResp, mResp MetaResp, chainID, currency string, exp int32) {
+func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp TransactionsResp, evResp []EventsResp, mResp MetaResp, chainID, currency string, exp int32) {
 	sut.Require().Equal(bResp.Hash, transaction.BlockHash)
 	sut.Require().EqualValues(bResp.Height, transaction.Height)
 	sut.Require().EqualValues(bResp.Height, transaction.Height)
 
-	for i, t := range trResp {
-		sut.Require().Equal(t.Hash, transaction.Hash)
-		sut.Require().Equal(chainID, transaction.ChainID)
-		sut.Require().Equal(t.Time, strconv.Itoa(int(transaction.Time.Unix())))
-		sut.Require().Equal("0.0.1", transaction.Version)
-		sut.Require().Equal(!t.IsSuccess, transaction.HasErrors)
-		sut.Require().Equal(strconv.Itoa(int(mResp.Era)), transaction.Epoch)
-
-		feeNumeric, ok := new(big.Int).SetString(t.FeeAmount, 10)
-		sut.Require().True(ok)
-		sut.Require().Equal(feeNumeric, transaction.Fee[0].Numeric)
-		sut.Require().Equal(t.FeeAmountTxt, transaction.Fee[0].Text)
-		sut.Require().Equal(currency, transaction.Fee[0].Currency)
-		sut.Require().EqualValues(exp, transaction.Fee[0].Exp)
-
-		sut.Require().Len(transaction.Events, len(evResp[i]))
-		for i, e := range evResp[i] {
-			sut.Require().Equal(strconv.Itoa(int(e.Index)), transaction.Events[i].ID)
-			// sub.Require().Equal(kind, transaction.Events[i].Kind)
-			// sub.Require().Equal(action, transaction.Events[i].Sub[0].Action)
-
-			expectedType := e.Method
-			for _, d := range e.EventData {
-				if d.Name == "DispatchError" {
-					expectedType = "error"
-				}
-			}
+	sut.Require().Equal(trResp.Hash, transaction.Hash)
+	sut.Require().Equal(chainID, transaction.ChainID)
+	sut.Require().Equal(trResp.Time, strconv.Itoa(int(transaction.Time.Unix())))
+	sut.Require().Equal("0.0.1", transaction.Version)
+	sut.Require().Equal(!trResp.IsSuccess, transaction.HasErrors)
 
 	validateAmount(sut, &transaction.Fee[0], int(exp), trResp.FeeAmount, trResp.FeeAmountTxt, currency)
 
@@ -228,7 +206,7 @@ func validateAmount(sut *suite.Suite, amount *structs.TransactionAmount, exp int
 	sut.Require().EqualValues(exp, amount.Exp)
 }
 
-func GetTransactionsResponses(height [2]uint64) [][]TransactionsResp {
+func GetTransactionsResponses(height [2]uint64) []TransactionsResp {
 	now := time.Now()
 
 	return []TransactionsResp{{

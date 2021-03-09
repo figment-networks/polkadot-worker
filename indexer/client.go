@@ -236,7 +236,7 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 		stream.Send(cStructs.TaskResponse{
 			Id: tr.Id,
 			Error: cStructs.TaskError{
-				Msg: fmt.Sprintf("Error while sending Transactions with given range %s", err.Error()),
+				Msg: fmt.Sprintf("Error while sending Transactions with given range: %s", err.Error()),
 			},
 			Final: true,
 		})
