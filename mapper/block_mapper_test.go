@@ -19,7 +19,7 @@ func TestBlockMapper_OK(t *testing.T) {
 	conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
 	proxy.BlockConversionDuration = conversionDuration.WithLabels("block")
 
-	blockRes := utils.GetBlocksResponses([]uint64{height, 4576})
+	blockRes := utils.GetBlocksResponses([2]uint64{height, 4576})
 
 	block := mapper.BlockMapper(utils.BlockResponse(blockRes[0]), chainID, numberOfTransactions)
 

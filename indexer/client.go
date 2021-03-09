@@ -98,7 +98,7 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 		case <-stream.Finish:
 			return
 		case taskRequest := <-stream.RequestListener:
-			c.log.Debug("Recived task request", zap.Stringer("taskID", taskRequest.Id), zap.String("type", taskRequest.Type))
+			c.log.Debug("Received task request", zap.Stringer("taskID", taskRequest.Id), zap.String("type", taskRequest.Type))
 
 			ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Minute)
 			defer cancel()
@@ -236,7 +236,7 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 		stream.Send(cStructs.TaskResponse{
 			Id: tr.Id,
 			Error: cStructs.TaskError{
-				Msg: fmt.Sprintf("Error while getting Transactions with given range: %s", err.Error()),
+				Msg: fmt.Sprintf("Error while sending Transactions with given range: %s", err.Error()),
 			},
 			Final: true,
 		})
@@ -244,16 +244,16 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 		return
 	}
 
-	c.log.Debug("Received all", zap.Stringer("taskID", tr.Id))
+	c.log.Debug("Received all %s", zap.Stringer("taskID", tr.Id))
 	close(out)
 
 	for {
 		select {
 		case <-ctx.Done():
-			c.log.Debug("Context done", zap.Stringer("taskID", tr.Id))
+			c.log.Debug("Context done %s", zap.Stringer("taskID", tr.Id))
 			return
 		case <-fin:
-			c.log.Debug("Finished sending all", zap.Stringer("taskID", tr.Id))
+			c.log.Debug("Finished sending all %s", zap.Stringer("taskID", tr.Id))
 			return
 		}
 	}
@@ -285,7 +285,7 @@ SendLoop:
 		Order: order,
 		Final: true,
 	}); err != nil {
-		log.Error("Error while sending end response", zap.Error(err))
+		log.Error("Error while sending end response %w", zap.Error(err))
 	}
 
 	if fin != nil {
@@ -300,7 +300,7 @@ func (c *Client) sendResp(id uuid.UUID, taskType string, payload interface{}, or
 	var buffer bytes.Buffer
 	enc := json.NewEncoder(&buffer)
 	if err := enc.Encode(payload); err != nil {
-		log.Error("Cannot encode payload", zap.Error(err))
+		log.Error("Cannot encode payload %w", zap.Error(err))
 	}
 
 	tr := cStructs.TaskResponse{
@@ -313,7 +313,7 @@ func (c *Client) sendResp(id uuid.UUID, taskType string, payload interface{}, or
 	buffer.Read(tr.Payload)
 
 	if err := stream.Send(tr); err != nil {
-		log.Error("Error while sending response", zap.Error(err))
+		log.Error("Error while sending response %w", zap.Error(err))
 	}
 }
 
@@ -328,7 +328,7 @@ func (c *Client) sendTransactionsInRange(ctx context.Context, hr structs.HeightR
 	errChan := make(chan error, count)
 
 	for {
-		c.log.Debug("Sending transactions", zap.Uint64("height", actualHeight))
+		c.log.Debugf("Sending transactions %v", zap.Uint64("height", actualHeight))
 
 		c.sendTransactionsByHeight(ctx, out, actualHeight, &wg, errChan)
 
@@ -403,7 +403,14 @@ func (c *Client) getTransactions(ctx context.Context, out chan cStructs.OutResp,
 		return nil
 	}
 
-	if transactionMapped, e = c.trMapper.TransactionsMapper(c.log, block, events, transactions); e != nil {
+	meta, e := c.proxy.GetMetaByHeight(ctx, height)
+	if e != nil {
+		err <- e
+		ctx.Done()
+		return nil
+	}
+
+	if transactionMapped, e = c.trMapper.TransactionsMapper(c.log, block, events, meta, transactions); e != nil {
 		err <- e
 		ctx.Done()
 		return nil

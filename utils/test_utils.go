@@ -7,6 +7,7 @@ import (
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 	"github.com/stretchr/testify/suite"
@@ -80,6 +81,16 @@ func EventsResponse(resp []EventsResp) *eventpb.GetByHeightResponse {
 	return &eventpb.GetByHeightResponse{Events: evts}
 }
 
+type MetaResp struct {
+	Era int64
+}
+
+func MetaResponse(resp MetaResp) *chainpb.GetMetaByHeightResponse {
+	return &chainpb.GetMetaByHeightResponse{
+		Era: resp.Era,
+	}
+}
+
 type TransactionsResp struct {
 	Index     int64
 	Args      string
@@ -115,7 +126,7 @@ func TransactionsResponse(resp TransactionsResp) *transactionpb.GetByHeightRespo
 	}
 }
 
-func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp TransactionsResp, evResp []EventsResp, chainID, currency string, exp int32) {
+func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp TransactionsResp, evResp []EventsResp, mResp MetaResp, chainID, currency string, exp int32) {
 	sut.Require().Equal(bResp.Hash, transaction.BlockHash)
 	sut.Require().EqualValues(bResp.Height, transaction.Height)
 	sut.Require().EqualValues(bResp.Height, transaction.Height)
@@ -195,7 +206,7 @@ func validateAmount(sut *suite.Suite, amount *structs.TransactionAmount, exp int
 	sut.Require().EqualValues(exp, amount.Exp)
 }
 
-func GetTransactionsResponses(height []uint64) []TransactionsResp {
+func GetTransactionsResponses(height [2]uint64) []TransactionsResp {
 	now := time.Now()
 
 	return []TransactionsResp{{
@@ -231,7 +242,7 @@ func GetTransactionsResponses(height []uint64) []TransactionsResp {
 	}}
 }
 
-func GetBlocksResponses(height []uint64) []BlockResp {
+func GetBlocksResponses(height [2]uint64) []BlockResp {
 	now := time.Now()
 	return []BlockResp{{
 		Hash:   "0x9291d0465056465420ee87ce768527b320de496a6b6a75f84c14622043d6d413",
@@ -244,7 +255,7 @@ func GetBlocksResponses(height []uint64) []BlockResp {
 	}}
 }
 
-func GetEventsResponses(height []uint64) [][]EventsResp {
+func GetEventsResponses(height [2]uint64) [][]EventsResp {
 	return [][]EventsResp{{{
 		Index:          0,
 		ExtrinsicIndex: 0,
@@ -368,4 +379,12 @@ func GetEventsResponses(height []uint64) [][]EventsResp {
 		Amount:     "10000000",
 		AmountText: "0.00001DOT",
 	}}}
+}
+
+func GetMetaResponses(height [2]uint64) []MetaResp {
+	return []MetaResp{{
+		Era: 352,
+	}, {
+		Era: 231,
+	}}
 }

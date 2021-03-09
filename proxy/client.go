@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
@@ -15,6 +16,7 @@ import (
 // ClientIface interface
 type ClientIface interface {
 	GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error)
+	GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.GetMetaByHeightResponse, error)
 	GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error)
 	GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error)
 }
@@ -24,14 +26,16 @@ type Client struct {
 	log *zap.SugaredLogger
 
 	blockClient       blockpb.BlockServiceClient
+	chainClient       chainpb.ChainServiceClient
 	eventClient       eventpb.EventServiceClient
 	transactionClient transactionpb.TransactionServiceClient
 }
 
 // NewClient is a polkadot-proxy Client constructor
-func NewClient(log *zap.SugaredLogger, bc blockpb.BlockServiceClient, ec eventpb.EventServiceClient, tc transactionpb.TransactionServiceClient) *Client {
+func NewClient(log *zap.SugaredLogger, bc blockpb.BlockServiceClient, cc chainpb.ChainServiceClient,
+	ec eventpb.EventServiceClient, tc transactionpb.TransactionServiceClient) *Client {
 	initMetrics()
-	return &Client{log: log, blockClient: bc, eventClient: ec, transactionClient: tc}
+	return &Client{log: log, blockClient: bc, chainClient: cc, eventClient: ec, transactionClient: tc}
 }
 
 func initMetrics() {
@@ -79,6 +83,28 @@ func (c *Client) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb
 	}
 
 	requestDuration.WithLabels("GetEventsByHeight", "OK").Observe(time.Since(now).Seconds())
+
+	return res, err
+}
+
+// GetMetaByHeight returns Chain meta by height
+func (c *Client) GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.GetMetaByHeightResponse, error) {
+	req := &chainpb.GetMetaByHeightRequest{
+		Height: int64(height),
+	}
+
+	c.log.Debugf("Sending GetMetaByHeight height: %d", height)
+
+	now := time.Now()
+
+	res, err := c.chainClient.GetMetaByHeight(ctx, req)
+	if err != nil {
+		err = errors.Wrapf(err, "Error while getting meta by height: %d", height)
+		requestDuration.WithLabels("GetMetaByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		return nil, err
+	}
+
+	requestDuration.WithLabels("GetMetaByHeight", "OK").Observe(time.Since(now).Seconds())
 
 	return res, err
 }
