@@ -9,11 +9,12 @@ import (
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
+
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
-var descRegexp = regexp.MustCompile(`\\\[[a-z,_ ]*\\\]`)
+var descRegexp = regexp.MustCompile(`\\\[[a-z_, ]*\\\]`)
 
 func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, currency string, divider *big.Float, exp int) (eventMap, error) {
 	evIndexMap := make(map[int64]struct{})
@@ -33,16 +34,16 @@ func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, 
 			return nil, err
 		}
 
-		kind := ""
-		if event.Error != nil {
-			kind = "error"
+		transactionEvent := structs.TransactionEvent{
+			ID:  strconv.FormatInt(e.Index, 10),
+			Sub: []structs.SubsetEvent{event},
 		}
 
-		events[e.ExtrinsicIndex] = append(events[e.ExtrinsicIndex], structs.TransactionEvent{
-			ID:   strconv.FormatInt(e.Index, 10),
-			Kind: kind,
-			Sub:  []structs.SubsetEvent{event},
-		})
+		if event.Error != nil {
+			transactionEvent.Kind = "error"
+		}
+
+		events[e.ExtrinsicIndex] = append(events[e.ExtrinsicIndex], transactionEvent)
 
 	}
 
@@ -63,7 +64,7 @@ type event struct {
 	accountIDs         []string
 	recipientAccountID string
 	senderAccountID    string
-	value              string
+	values             []string
 	amount             structs.TransactionAmount
 
 	currency  string
@@ -77,12 +78,10 @@ func getEvent(log *zap.SugaredLogger, evpb *eventpb.Event, currency string, exp 
 		return structs.SubsetEvent{}, err
 	}
 
-	amount, err := getAmount(e.value, exp, currency, divider)
-	if err != nil {
+	if err := e.appendAmounts(exp, currency, divider); err != nil {
 		return structs.SubsetEvent{}, err
 	}
 
-	e.appendAmount(amount)
 	e.appendAccounts()
 
 	e.Module = evpb.Section
@@ -110,28 +109,37 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 		return err
 	}
 
+	i := 0
 	for i, v := range values {
 		if i >= dataLen {
 			return fmt.Errorf("Not enough data to parse all event values")
 		}
 
 		switch v {
-		case "account", "approving", "authority_id", "multisig", "stash", "unvested":
+		case "account", "approving", "authority_id", "multisig", "stash", "unvested", "target",
+			"sub", "main", "cancelling", "lost", "rescuer", "sender", "voter", "founder", "candidate",
+			"candidate_id", "vouching", "nominator", "validator", "finder":
 			if accountID, err := getAccountID(ev.Data[i]); err == nil {
 				e.accountIDs = append(e.accountIDs, accountID)
 			}
-		case "error":
-			e.eventType = []string{"error"}
-		case "info", "tip_hash", "call_hash", "index":
-			break
 		case "from":
 			e.senderAccountID, err = getAccountID(ev.Data[i])
-		case "to", "who":
+		case "to", "who", "beneficiary":
 			e.recipientAccountID, err = getAccountID(ev.Data[i])
-		case "deposit", "free_balance", "value", "balance", "amount":
-			e.value, err = getBalance(ev.Data[i])
+		case "deposit", "free_balance", "value", "balance", "amount", "offer", "validator_payout",
+			"remainder", "payout", "award", "slashed", "budget_remaining":
+			if balance, err := getBalance(ev.Data[i]); err == nil {
+				e.values = append(e.values, balance)
+			}
+		case "error":
+			e.eventType = []string{"error"}
+		case "info", "tip_hash", "call_hash", "index", "new_members", "proposal_index", "compute",
+			"destination_status", "is_ok", "threshold", "until", "authority_set", "registrar_index",
+			"timepoint", "when", "task", "id", "result", "judged", "era_index", "session_index",
+			"proposal_hash", "yes", "no":
+			break
 		default:
-			return fmt.Errorf("Unknown value to parse event %q", v)
+			return fmt.Errorf("Unknown value to parse event %q values: %v", v, values)
 		}
 
 		if err != nil {
@@ -142,6 +150,10 @@ func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event)
 	}
 
 	if dataLen > 0 {
+		for ; i < dataLen; i++ {
+			attributes[i] = fmt.Sprintf("%v", ev.Data[i])
+		}
+
 		e.Additional = make(map[string][]string)
 		e.Additional["attributes"] = attributes
 	}
@@ -205,15 +217,27 @@ func getAmount(value string, exp int, currency string, divider *big.Float) (*str
 	}, nil
 }
 
-func (e *event) appendAmount(amount *structs.TransactionAmount) {
-	if amount == nil {
-		return
+func (e *event) appendAmounts(exp int, currency string, divider *big.Float) error {
+	valuesLen := len(e.values)
+	if valuesLen == 0 {
+		return nil
 	}
 
-	e.amount = *amount
-
 	e.Amount = make(map[string]structs.TransactionAmount)
-	e.Amount["0"] = *amount
+	for i, value := range e.values {
+		amount, err := getAmount(value, exp, currency, divider)
+		if err != nil {
+			return err
+		}
+
+		e.Amount[strconv.Itoa(i)] = *amount
+		if valuesLen == 1 && i == 0 {
+			// am := *amount
+			e.amount = *amount
+		}
+	}
+
+	return nil
 }
 
 func (e *event) appendAccounts() {

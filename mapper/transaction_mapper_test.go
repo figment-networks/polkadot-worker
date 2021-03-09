@@ -7,15 +7,15 @@ import (
 	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/proxy"
 	"github.com/figment-networks/polkadot-worker/utils"
+
+	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
-	"go.uber.org/zap"
-
-	"github.com/figment-networks/indexing-engine/metrics"
 
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/zap"
 )
 
 type TransactionMapperTest struct {

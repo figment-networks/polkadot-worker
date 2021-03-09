@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/figment-networks/polkadot-worker/proxy"
-	"go.uber.org/zap"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
@@ -18,6 +17,7 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 func initExpDivider(precision int64) *big.Float {

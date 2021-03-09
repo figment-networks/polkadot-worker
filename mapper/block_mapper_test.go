@@ -3,10 +3,11 @@ package mapper_test
 import (
 	"testing"
 
-	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/proxy"
 	"github.com/figment-networks/polkadot-worker/utils"
+
+	"github.com/figment-networks/indexing-engine/metrics"
 
 	"github.com/stretchr/testify/require"
 )
