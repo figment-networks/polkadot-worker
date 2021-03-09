@@ -57,9 +57,12 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.SugaredLogger, blockRes 
 		return nil, errors.New("One of required proxy response is missing")
 	}
 
-	allEvents, err := parseEvents(log, eventRes, m.currency, m.div, m.exp)
-	if err != nil {
-		return nil, err
+	var allEvents eventMap
+	var err error
+	if transactionRes != nil && len(transactionRes.Transactions) != 0 {
+		if allEvents, err = parseEvents(log, eventRes, m.currency, m.div, m.exp); err != nil {
+			return nil, err
+		}
 	}
 
 	for _, t := range transactionRes.Transactions {

@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var descRegexp = regexp.MustCompile(`\\\[.*\\\]`)
+var descRegexp = regexp.MustCompile(`\\\[[a-z,_ ]*\\\]`)
 
 func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, currency string, divider *big.Float, exp int) (eventMap, error) {
 	evIndexMap := make(map[int64]struct{})
