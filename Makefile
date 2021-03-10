@@ -19,7 +19,7 @@ build: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.Timestamp=$(shell date
 build: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.Version=$(VERSION)
 build: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.GitSHA=$(GIT_SHA)
 build:
-	go build -o polkadot-worker -ldflags '$(LDFLAGS)'  ./cmd/polkadot-worker
+	go build -o worker -ldflags '$(LDFLAGS)'  ./cmd/polkadot-worker
 
 .PHONY: pack-release
 pack-release:
