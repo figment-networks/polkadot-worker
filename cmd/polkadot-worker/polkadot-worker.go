@@ -115,6 +115,7 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 		log,
 		proxyClient,
 		cfg.Worker.Exp,
+		cfg.IndexerManager.MaxHeightsToGet,
 		cfg.Worker.ChainID,
 		cfg.Worker.Currency,
 		cfg.Worker.Version,

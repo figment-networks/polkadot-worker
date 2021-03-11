@@ -70,18 +70,23 @@ func (ic *IndexerClientTest) SetupTest() {
 
 	proxyClientMock := proxyClientMock{}
 
-	ic.Client = indexer.NewClient(log.Sugar(), &proxyClientMock, ic.Exp, ic.ChainID, ic.Currency, ic.Version)
+	ic.Client = indexer.NewClient(log.Sugar(), &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, ic.Version)
 	ic.ProxyClient = &proxyClientMock
 }
 
 func (ic *IndexerClientTest) TestGetLatest_OK() {
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[1]), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.BlockResponse(ic.BlockResponse[1]), nil)
 	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.EventsResponse(ic.EventsResponse[0]), nil)
+	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.EventsResponse(ic.EventsResponse[1]), nil)
 	ic.ProxyClient.On("GetMetaByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.MetaResponse(ic.MetaResponse[0]), nil)
+	ic.ProxyClient.On("GetMetaByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.MetaResponse(ic.MetaResponse[1]), nil)
 	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
+	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.TransactionsResponse(ic.TransactionsResponse[1]), nil)
 
 	req := structs.LatestDataRequest{
-		LastHeight: uint64(ic.Height[0]),
+		LastHeight: ic.Height[0],
 	}
 
 	var buffer bytes.Buffer
@@ -103,7 +108,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 
 	stream.RequestListener <- tr
 
-	blockFounded, transactionFounded, endFounded := false, false, false
+	countBlock, countTransaction, endFounded := 0, 0, false
 	for s := range stream.ResponseListener {
 		if ic.ReqID != s.Id {
 			continue
@@ -115,26 +120,39 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 			err := json.Unmarshal(s.Payload, &block)
 			ic.Require().Nil(err)
 
-			ic.validateBlock(block, ic.BlockResponse[0])
-			blockFounded = true
-			break
+			switch block.Hash {
+			case ic.BlockResponse[0].Hash:
+				ic.validateBlock(block, ic.BlockResponse[0])
+				break
+			case ic.BlockResponse[1].Hash:
+				ic.validateBlock(block, ic.BlockResponse[1])
+			}
 
+			countBlock++
+			break
 		case "Transaction":
 			var transaction structs.Transaction
 			err := json.Unmarshal(s.Payload, &transaction)
 			ic.Require().Nil(err)
 
-			expectedEvents := ic.EventsResponse[0][1:]
-			utils.ValidateTransactions(&ic.Suite, transaction, ic.BlockResponse[0], ic.TransactionsResponse[0], expectedEvents, ic.MetaResponse[0], ic.ChainID, ic.Currency, int32(ic.Exp))
-			transactionFounded = true
-			break
+			switch transaction.Hash {
+			case ic.TransactionsResponse[0].Hash:
+				expectedEvents := ic.EventsResponse[0][1:]
+				utils.ValidateTransactions(&ic.Suite, transaction, ic.BlockResponse[0], ic.TransactionsResponse[0], expectedEvents, ic.MetaResponse[0], ic.ChainID, ic.Currency, int32(ic.Exp))
+				break
+			case ic.TransactionsResponse[1].Hash:
+				expectedEvents := ic.EventsResponse[1][1:]
+				utils.ValidateTransactions(&ic.Suite, transaction, ic.BlockResponse[1], ic.TransactionsResponse[1], expectedEvents, ic.MetaResponse[1], ic.ChainID, ic.Currency, int32(ic.Exp))
+			}
 
+			countTransaction++
+			break
 		case "END":
 			ic.Require().True(s.Final)
 			endFounded = true
 		}
 
-		if blockFounded && transactionFounded && endFounded {
+		if countBlock == 2 && countTransaction == 2 && endFounded {
 			break
 		}
 	}
@@ -168,6 +186,46 @@ func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
 
 func (ic *IndexerClientTest) TestGetLatest_BlockResponseError() {
 	e := errors.New("new block error")
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(&blockpb.GetByHeightResponse{}, e)
+
+	req := structs.LatestDataRequest{
+		LastHeight: uint64(ic.Height[0]),
+	}
+
+	var buffer bytes.Buffer
+	err := json.NewEncoder(&buffer).Encode(req)
+	ic.Require().Nil(err)
+
+	tr := cStructs.TaskRequest{
+		Id:      ic.ReqID,
+		Type:    structs.ReqIDLatestData,
+		Payload: make([]byte, buffer.Len()),
+	}
+	buffer.Read(tr.Payload)
+
+	stream := cStructs.NewStreamAccess()
+	defer stream.Close()
+
+	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
+	defer ic.CloseStream(context.Background(), stream.StreamID)
+
+	stream.RequestListener <- tr
+
+	for response := range stream.ResponseListener {
+		if response.Id != ic.ReqID || response.Error.Msg == "" {
+			continue
+		}
+
+		ic.Require().True(response.Final)
+		ic.Require().Contains(response.Error.Msg, "Could not fetch latest block from proxy: new block error")
+		return
+	}
+}
+
+func (ic *IndexerClientTest) TestGetLatest_BlockResponseError2() {
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+
+	e := errors.New("new block error")
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(&blockpb.GetByHeightResponse{}, e)
 
 	req := structs.LatestDataRequest{
@@ -199,12 +257,13 @@ func (ic *IndexerClientTest) TestGetLatest_BlockResponseError() {
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Could not fetch latest transactions: Error while getting transactions: new block error")
+		ic.Require().Contains(response.Error.Msg, "Error while getting Transactions with given range: new block error")
 		return
 	}
 }
 
 func (ic *IndexerClientTest) TestGetLatest_TransactionResponseError() {
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 
 	e := errors.New("new transaction error")
@@ -239,12 +298,13 @@ func (ic *IndexerClientTest) TestGetLatest_TransactionResponseError() {
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Could not fetch latest transactions: Error while getting transactions: new transaction error")
+		ic.Require().Contains(response.Error.Msg, "Error while getting Transactions with given range: new transaction error")
 		return
 	}
 }
 
 func (ic *IndexerClientTest) TestGetLatest_EventResponseError() {
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
 
@@ -280,12 +340,13 @@ func (ic *IndexerClientTest) TestGetLatest_EventResponseError() {
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Could not fetch latest transactions: Error while getting transactions: new event error")
+		ic.Require().Contains(response.Error.Msg, "Error while getting Transactions with given range: new event error")
 		return
 	}
 }
 
 func (ic *IndexerClientTest) TestGetLatest_MetaResponseError() {
+	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.EventsResponse(ic.EventsResponse[0]), nil)
 	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
@@ -322,7 +383,7 @@ func (ic *IndexerClientTest) TestGetLatest_MetaResponseError() {
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Could not fetch latest transactions: Error while getting transactions: new meta error")
+		ic.Require().Contains(response.Error.Msg, "Error while getting Transactions with given range: new meta error ")
 		return
 	}
 }
@@ -480,7 +541,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetBlockByHeightError() {
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: Error while getting transactions: new block error")
+		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: new block error")
 		return
 	}
 }
@@ -527,7 +588,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetTransactionByHeightError() {
 
 		ic.Require().True(response.Final)
 
-		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: Error while getting transactions: new transaction error")
+		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: new transaction error")
 		return
 	}
 }
@@ -575,7 +636,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetEventByHeightError() {
 			continue
 		}
 
-		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: Error while getting transactions: new event error one , new event error two")
+		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: new event error one , new event error two")
 		return
 	}
 }
@@ -618,7 +679,7 @@ func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: Error while getting transactions: Could not parse transaction partial fee \"bad\"")
+		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: Could not parse transaction partial fee \"bad\"")
 		return
 	}
 }
