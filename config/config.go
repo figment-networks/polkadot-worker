@@ -9,9 +9,10 @@ type Config struct {
 
 // IndexerManager base url and listening port
 type IndexerManager struct {
-	BaseURL    string `json:"base_url"`
-	Host       string `json:"host"`
-	ListenPort string `json:"listen_port"`
+	BaseURL         string `json:"base_url"`
+	Host            string `json:"host"`
+	ListenPort      string `json:"listen_port"`
+	MaxHeightsToGet uint64 `json:"max_heights_to_get"`
 }
 
 // WorkerConfig config

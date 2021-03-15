@@ -2,7 +2,8 @@
   "indexer_manager":  {
     "base_url": "127.0.0.1:8085",
     "host": "host.docker.internal",
-    "listen_port": ":3000"
+    "listen_port": ":3000",
+    "max_heights_to_get": 10000
   },
   "proxy_base_url": "localhost:50051",
   "worker": {

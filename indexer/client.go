@@ -31,10 +31,11 @@ var (
 
 // Client connecting to indexer-manager
 type Client struct {
-	chainID  string
-	currency string
-	exp      int
-	version  string
+	chainID         string
+	currency        string
+	exp             int
+	maxHeightsToGet uint64
+	version         string
 
 	log      *zap.SugaredLogger
 	proxy    proxy.ClientIface
@@ -44,19 +45,20 @@ type Client struct {
 }
 
 // NewClient is a indexer-manager Client constructor
-func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, chainID, currency, version string) *Client {
+func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, maxHeightsToGet uint64, chainID, currency, version string) *Client {
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
 
 	return &Client{
-		chainID:  chainID,
-		currency: currency,
-		exp:      exp,
-		version:  version,
-		log:      log,
-		proxy:    proxy,
-		streams:  make(map[uuid.UUID]*cStructs.StreamAccess),
-		trMapper: mapper.New(exp, chainID, currency, version),
+		chainID:         chainID,
+		currency:        currency,
+		exp:             exp,
+		maxHeightsToGet: maxHeightsToGet,
+		version:         version,
+		log:             log,
+		proxy:           proxy,
+		streams:         make(map[uuid.UUID]*cStructs.StreamAccess),
+		trMapper:        mapper.New(exp, chainID, currency, version),
 	}
 }
 
@@ -152,7 +154,27 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
-	c.sendLatest(ctx, out, stream, ldr.LastHeight, tr.Id)
+	block, err := c.proxy.GetBlockByHeight(ctx, 0)
+	if err != nil {
+		stream.Send(cStructs.TaskResponse{
+			Id:    tr.Id,
+			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch latest block from proxy: %s", err.Error())},
+			Final: true,
+		})
+		return
+	}
+
+	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, uint64(block.Block.Header.Height))
+
+	if err := c.sendTransactionsInRange(ctx, hr, out); err != nil {
+		stream.Send(cStructs.TaskResponse{
+			Id:    tr.Id,
+			Error: cStructs.TaskError{Msg: fmt.Sprintf("Error while getting Transactions with given range: %s", err.Error())},
+			Final: true,
+		})
+		close(out)
+		return
+	}
 
 	c.log.Debug("Received all", zap.Stringer("taskID", tr.Id))
 	close(out)
@@ -169,22 +191,27 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 	}
 }
 
-func (c *Client) sendLatest(ctx context.Context, out chan cStructs.OutResp, stream *cStructs.StreamAccess, height uint64, taskId uuid.UUID) {
-	errChan := make(chan error, 1)
+func (c *Client) getLatestBlockHeightRange(ctx context.Context, lastHeight, lastHeightFromProxy uint64) structs.HeightRange {
+	if lastHeight == 0 {
+		startheight := lastHeightFromProxy - c.maxHeightsToGet
+		if startheight > 0 {
+			return structs.HeightRange{
+				StartHeight: startheight,
+				EndHeight:   lastHeightFromProxy,
+			}
+		}
+	}
 
-	c.sendTransactionsByHeight(ctx, out, height, nil, errChan)
+	if c.maxHeightsToGet < lastHeightFromProxy-lastHeight {
+		return structs.HeightRange{
+			StartHeight: lastHeightFromProxy - c.maxHeightsToGet,
+			EndHeight:   lastHeightFromProxy,
+		}
+	}
 
-	close(errChan)
-
-	if err := c.wrapErrorsFromChan(errChan); err != nil {
-		stream.Send(cStructs.TaskResponse{
-			Id: taskId,
-			Error: cStructs.TaskError{
-				Msg: fmt.Sprintf("Could not fetch latest transactions: %s", err.Error()),
-			},
-			Final: true,
-		})
-		return
+	return structs.HeightRange{
+		StartHeight: lastHeight,
+		EndHeight:   lastHeightFromProxy,
 	}
 }
 
@@ -432,7 +459,7 @@ func (c *Client) wrapErrorsFromChan(errChan chan error) error {
 		for _, err := range errors {
 			errStr += err.Error() + " , "
 		}
-		return fmt.Errorf(fmt.Sprintf("Error while getting transactions: %s", errStr))
+		return fmt.Errorf(fmt.Sprintf("%s", errStr))
 	}
 
 	return nil
