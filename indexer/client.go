@@ -25,8 +25,9 @@ var (
 	// ErrBadRequest is returned when cannot unmarshal message
 	ErrBadRequest = errors.New("bad request")
 
-	getTransactionDuration *metrics.GroupObserver
-	getLatestDuration      *metrics.GroupObserver
+	getAccountBalanceDuration *metrics.GroupObserver
+	getTransactionDuration    *metrics.GroupObserver
+	getLatestDuration         *metrics.GroupObserver
 )
 
 // Client connecting to indexer-manager
@@ -37,15 +38,18 @@ type Client struct {
 	maxHeightsToGet uint64
 	version         string
 
-	log      *zap.SugaredLogger
-	proxy    proxy.ClientIface
-	sLock    sync.Mutex
-	streams  map[uuid.UUID]*cStructs.StreamAccess
+	log     *zap.SugaredLogger
+	proxy   proxy.ClientIface
+	sLock   sync.Mutex
+	streams map[uuid.UUID]*cStructs.StreamAccess
+
+	abMapper *mapper.AccountBalanceMapper
 	trMapper *mapper.TransactionMapper
 }
 
 // NewClient is a indexer-manager Client constructor
 func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, maxHeightsToGet uint64, chainID, currency, version string) *Client {
+	getAccountBalanceDuration = endpointDuration.WithLabels("getAccountBalance")
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
 
@@ -58,7 +62,8 @@ func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, maxHeig
 		log:             log,
 		proxy:           proxy,
 		streams:         make(map[uuid.UUID]*cStructs.StreamAccess),
-		trMapper:        mapper.New(exp, chainID, currency, version),
+		abMapper:        mapper.NewAccountBalanceMapper(exp, currency),
+		trMapper:        mapper.NewTransactionMapper(exp, chainID, currency, version),
 	}
 }
 
@@ -106,6 +111,8 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 			defer cancel()
 
 			switch taskRequest.Type {
+			case structs.ReqIDAccountBalance:
+				c.GetAccountBalance(ctxWithTimeout, taskRequest, stream)
 			case structs.ReqIDGetTransactions:
 				c.GetTransactions(ctxWithTimeout, taskRequest, stream)
 			case structs.ReqIDLatestData:
@@ -121,6 +128,82 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 			}
 		}
 	}
+}
+
+// GetAccountBalance returns account balance
+func (c *Client) GetAccountBalance(ctx context.Context, tr cStructs.TaskRequest, stream *cStructs.StreamAccess) {
+	timer := metrics.NewTimer(getAccountBalanceDuration)
+	defer timer.ObserveDuration()
+
+	var hr structs.HeightAccount
+	var err error
+
+	if err = json.Unmarshal(tr.Payload, &hr); hr.Account == "" || hr.Height == 0 {
+		err = ErrBadRequest
+	}
+
+	if err != nil {
+		c.log.Debug("Cannot unmarshal payload", zap.String("contents", string(tr.Payload)))
+		stream.Send(cStructs.TaskResponse{
+			Id: tr.Id,
+			Error: cStructs.TaskError{
+				Msg: fmt.Sprintf("Cannot unmarshal payload: %s", err.Error()),
+			},
+			Final: true,
+		})
+		return
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	out := make(chan cStructs.OutResp, 1)
+	fin := make(chan bool, 1)
+
+	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
+
+	if err := c.sendAccountBalance(ctx, hr.Account, hr.Height, out); err != nil {
+		stream.Send(cStructs.TaskResponse{
+			Id: tr.Id,
+			Error: cStructs.TaskError{
+				Msg: fmt.Sprintf("Could not send Account Balance: %s", err.Error()),
+			},
+			Final: true,
+		})
+		close(out)
+		return
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			c.log.Debug("Context done", zap.Stringer("taskID", tr.Id))
+			return
+		case <-fin:
+			c.log.Debug("Finished sending all", zap.Stringer("taskID", tr.Id))
+			return
+		}
+	}
+}
+
+func (c *Client) sendAccountBalance(ctx context.Context, account string, height uint64, out chan cStructs.OutResp) error {
+	accountBalanceResp, err := c.proxy.GetAccountBalance(ctx, account, height)
+	if err != nil {
+		return err
+	}
+
+	balanceSummary, err := c.abMapper.AccountBalanceMapper(accountBalanceResp, height)
+	if err != nil {
+		return err
+	}
+
+	out <- cStructs.OutResp{
+		Type:    "AccountBalance",
+		Payload: *balanceSummary,
+	}
+	close(out)
+
+	return nil
 }
 
 // GetLatest returns latest Block's Transactions
@@ -336,7 +419,6 @@ func (c *Client) sendResp(id uuid.UUID, taskType string, payload interface{}, or
 		Order:   order,
 		Payload: make([]byte, buffer.Len()),
 	}
-
 	buffer.Read(tr.Payload)
 
 	if err := stream.Send(tr); err != nil {

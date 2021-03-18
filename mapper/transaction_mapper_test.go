@@ -70,7 +70,7 @@ func (tm *TransactionMapperTest) SetupTest() {
 
 	tm.Log = log.Sugar()
 
-	tm.TransactionMapper = mapper.New(tm.Exp, tm.ChainID, tm.Currency, tm.Version)
+	tm.TransactionMapper = mapper.NewTransactionMapper(tm.Exp, tm.ChainID, tm.Currency, tm.Version)
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_EmptyResponse() {

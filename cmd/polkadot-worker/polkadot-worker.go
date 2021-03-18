@@ -20,6 +20,7 @@ import (
 	grpcProtoIndexer "github.com/figment-networks/indexer-manager/worker/transport/grpc/indexer"
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/indexing-engine/metrics/prometheusmetrics"
+	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
@@ -105,6 +106,7 @@ func createIndexerClient(ctx context.Context, log *zap.SugaredLogger, cfg *confi
 
 	proxyClient := proxy.NewClient(
 		log,
+		accountpb.NewAccountServiceClient(conn),
 		blockpb.NewBlockServiceClient(conn),
 		chainpb.NewChainServiceClient(conn),
 		eventpb.NewEventServiceClient(conn),

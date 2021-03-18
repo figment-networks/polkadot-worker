@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
@@ -15,6 +16,7 @@ import (
 
 // ClientIface interface
 type ClientIface interface {
+	GetAccountBalance(ctx context.Context, account string, height uint64) (*accountpb.GetByHeightResponse, error)
 	GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error)
 	GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.GetMetaByHeightResponse, error)
 	GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error)
@@ -25,6 +27,7 @@ type ClientIface interface {
 type Client struct {
 	log *zap.SugaredLogger
 
+	accountClient     accountpb.AccountServiceClient
 	blockClient       blockpb.BlockServiceClient
 	chainClient       chainpb.ChainServiceClient
 	eventClient       eventpb.EventServiceClient
@@ -32,15 +35,38 @@ type Client struct {
 }
 
 // NewClient is a polkadot-proxy Client constructor
-func NewClient(log *zap.SugaredLogger, bc blockpb.BlockServiceClient, cc chainpb.ChainServiceClient,
-	ec eventpb.EventServiceClient, tc transactionpb.TransactionServiceClient) *Client {
+func NewClient(log *zap.SugaredLogger, ac accountpb.AccountServiceClient, bc blockpb.BlockServiceClient,
+	cc chainpb.ChainServiceClient, ec eventpb.EventServiceClient, tc transactionpb.TransactionServiceClient) *Client {
 	initMetrics()
-	return &Client{log: log, blockClient: bc, chainClient: cc, eventClient: ec, transactionClient: tc}
+	return &Client{log: log, accountClient: ac, blockClient: bc, chainClient: cc, eventClient: ec, transactionClient: tc}
 }
 
 func initMetrics() {
 	BlockConversionDuration = conversionDuration.WithLabels("block")
 	TransactionConversionDuration = conversionDuration.WithLabels("transaction")
+}
+
+// GetAccountBalance return Account Balance by provided height
+func (c *Client) GetAccountBalance(ctx context.Context, account string, height uint64) (*accountpb.GetByHeightResponse, error) {
+	req := &accountpb.GetByHeightRequest{
+		Height:  int64(height),
+		Address: account,
+	}
+
+	c.log.Debugf("Sending GetAccountBalanceByHeight height: %d", height)
+
+	now := time.Now()
+
+	res, err := c.accountClient.GetByHeight(ctx, req)
+	if err != nil {
+		err = errors.Wrapf(err, "Error while getting account balance by height: %d", height)
+		requestDuration.WithLabels("GetAccountBalanceByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		return nil, err
+	}
+
+	requestDuration.WithLabels("GetAccountBalanceByHeight", "OK").Observe(time.Since(now).Seconds())
+
+	return res, err
 }
 
 // GetBlockByHeight returns Block by provided height

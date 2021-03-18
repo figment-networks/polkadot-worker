@@ -7,6 +7,7 @@ import (
 
 	"github.com/figment-networks/polkadot-worker/proxy"
 
+	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
@@ -23,6 +24,7 @@ type BlockClientTest struct {
 
 	*proxy.Client
 
+	AccountClientMock     *accountClientMock
 	BlockClientMock       *blockClientMock
 	ChainClientMock       *chainClientMock
 	EventClientMock       *eventClientMock
@@ -33,6 +35,7 @@ func (bc *BlockClientTest) SetupTest() {
 	logger, err := zap.NewDevelopment()
 	bc.Require().Nil(err)
 
+	accountClientMock := accountClientMock{}
 	blockClientMock := blockClientMock{}
 	chainClientMock := chainClientMock{}
 	eventClientMock := eventClientMock{}
@@ -40,12 +43,14 @@ func (bc *BlockClientTest) SetupTest() {
 
 	bc.Client = proxy.NewClient(
 		logger.Sugar(),
+		&accountClientMock,
 		&blockClientMock,
 		&chainClientMock,
 		&eventClientMock,
 		&transactionClientMock,
 	)
 
+	bc.AccountClientMock = &accountClientMock
 	bc.BlockClientMock = &blockClientMock
 	bc.ChainClientMock = &chainClientMock
 	bc.EventClientMock = &eventClientMock
@@ -230,6 +235,20 @@ func (bc *BlockClientTest) TestGetTransactionByHeight_Error() {
 
 func TestBlockClient(t *testing.T) {
 	suite.Run(t, new(BlockClientTest))
+}
+
+type accountClientMock struct {
+	mock.Mock
+}
+
+func (m accountClientMock) GetByHeight(ctx context.Context, in *accountpb.GetByHeightRequest, opts ...grpc.CallOption) (*accountpb.GetByHeightResponse, error) {
+	args := m.Called(ctx, in, opts)
+	return args.Get(0).(*accountpb.GetByHeightResponse), args.Error(1)
+}
+
+func (m accountClientMock) GetIdentity(ctx context.Context, in *accountpb.GetIdentityRequest, opts ...grpc.CallOption) (*accountpb.GetIdentityResponse, error) {
+	args := m.Called(ctx, in, opts)
+	return args.Get(0).(*accountpb.GetIdentityResponse), args.Error(1)
 }
 
 type blockClientMock struct {
