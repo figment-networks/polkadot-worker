@@ -42,7 +42,7 @@ func (bc *BlockClientTest) SetupTest() {
 	transactionClientMock := transactionClientMock{}
 
 	bc.Client = proxy.NewClient(
-		logger.Sugar(),
+		logger,
 		&accountClientMock,
 		&blockClientMock,
 		&chainClientMock,

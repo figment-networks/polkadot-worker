@@ -5,10 +5,8 @@ import (
 	"testing"
 
 	"github.com/figment-networks/polkadot-worker/mapper"
-	"github.com/figment-networks/polkadot-worker/proxy"
 	"github.com/figment-networks/polkadot-worker/utils"
 
-	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
@@ -38,13 +36,10 @@ type TransactionMapperTest struct {
 	MetaResponse         *chainpb.GetMetaByHeightResponse
 	TransactionsResponse *transactionpb.GetByHeightResponse
 
-	Log *zap.SugaredLogger
+	Log *zap.Logger
 }
 
 func (tm *TransactionMapperTest) SetupTest() {
-	conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
-	proxy.TransactionConversionDuration = conversionDuration.WithLabels("transaction")
-
 	tm.ChainID = "Polkadot"
 	tm.Currency = "DOT"
 	tm.Exp = 12
@@ -68,9 +63,9 @@ func (tm *TransactionMapperTest) SetupTest() {
 	log, err := zap.NewDevelopment()
 	tm.Require().Nil(err)
 
-	tm.Log = log.Sugar()
+	tm.Log = log
 
-	tm.TransactionMapper = mapper.NewTransactionMapper(tm.Exp, tm.ChainID, tm.Currency, tm.Version)
+	tm.TransactionMapper = mapper.NewTransactionMapper(tm.Exp, tm.ChainID, tm.Currency)
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_EmptyResponse() {

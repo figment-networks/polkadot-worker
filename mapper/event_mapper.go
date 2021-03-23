@@ -16,7 +16,7 @@ import (
 
 var descRegexp = regexp.MustCompile(`\\\[[a-z_, ]*\\\]`)
 
-func parseEvents(log *zap.SugaredLogger, eventRes *eventpb.GetByHeightResponse, currency string, divider *big.Float, exp int) (eventMap, error) {
+func parseEvents(log *zap.Logger, eventRes *eventpb.GetByHeightResponse, currency string, divider *big.Float, exp int) (eventMap, error) {
 	evIndexMap := make(map[int64]struct{})
 
 	events := make(map[int64][]structs.TransactionEvent)
@@ -71,7 +71,7 @@ type event struct {
 	eventType []string
 }
 
-func getEvent(log *zap.SugaredLogger, evpb *eventpb.Event, currency string, exp int, divider *big.Float) (structs.SubsetEvent, error) {
+func getEvent(log *zap.Logger, evpb *eventpb.Event, currency string, exp int, divider *big.Float) (structs.SubsetEvent, error) {
 	var e event
 
 	if err := e.parseEventDescription(log, evpb); err != nil {
@@ -100,7 +100,7 @@ func getEvent(log *zap.SugaredLogger, evpb *eventpb.Event, currency string, exp 
 	return e.SubsetEvent, nil
 }
 
-func (e *event) parseEventDescription(log *zap.SugaredLogger, ev *eventpb.Event) error {
+func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error {
 	dataLen := len(ev.Data)
 	attributes := make([]string, dataLen)
 
@@ -232,7 +232,6 @@ func (e *event) appendAmounts(exp int, currency string, divider *big.Float) erro
 
 		e.Amount[strconv.Itoa(i)] = *amount
 		if valuesLen == 1 && i == 0 {
-			// am := *amount
 			e.amount = *amount
 		}
 	}
