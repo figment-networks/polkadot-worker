@@ -86,7 +86,7 @@ func getEvent(log *zap.Logger, evpb *eventpb.Event, currency string, exp int, di
 
 	e.Module = evpb.Section
 
-	e.Type = []string{evpb.Method}
+	e.Type = []string{strings.ToLower(evpb.Method)}
 	if e.eventType != nil {
 		e.Type = append(e.Type, e.eventType...)
 	}
