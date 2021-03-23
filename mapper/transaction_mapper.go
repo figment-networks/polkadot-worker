@@ -18,7 +18,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const version string = "0.0.1"
+const chain_version string = "0.0.1"
 
 func initExpDivider(precision int64) *big.Float {
 	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(precision), nil)
@@ -87,7 +87,7 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockp
 			ChainID:   m.chainID,
 			Time:      *time,
 			Fee:       fee,
-			Version:   version,
+			Version:   chain_version,
 			Events:    allEvents.getEventsByTrIndex(t.ExtrinsicIndex, strconv.FormatUint(uint64(t.Nonce), 10), t.Hash, time),
 			HasErrors: !t.IsSuccess,
 			Raw:       []byte(t.Raw),

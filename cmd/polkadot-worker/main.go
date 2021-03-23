@@ -132,7 +132,6 @@ func getConfig(path string) (cfg *config.Config, err error) {
 }
 
 func createIndexerClient(ctx context.Context, log *zap.Logger, cfg *config.Config, conn *grpc.ClientConn) *indexer.Client {
-
 	proxyClient := proxy.NewClient(
 		log,
 		accountpb.NewAccountServiceClient(conn),
@@ -160,7 +159,7 @@ func registerWorker(ctx context.Context, l *zap.Logger, cfg *config.Config) {
 
 	logger.Info(fmt.Sprintf("Self-hostname (%s) is %s:%s ", workerRunID.String(), hostname, cfg.Port))
 
-	c := connectivity.NewWorkerConnections(workerRunID.String(), hostname+":"+cfg.Port, cfg.Network, cfg.ChainID, "0.0.1")
+	c := connectivity.NewWorkerConnections(workerRunID.String(), hostname+":"+cfg.Port, cfg.Network, cfg.ChainID, config.Version)
 	for _, m := range managers {
 		c.AddManager(m + "/client_ping")
 	}

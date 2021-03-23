@@ -14,9 +14,6 @@ func TestBlockMapper_OK(t *testing.T) {
 	var numberOfTransactions uint64 = 3
 	var chainID string = "Polkadot"
 
-	//conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
-	//blockConversionDuration = conversionDuration.WithLabels("block")
-
 	blockRes := utils.GetBlocksResponses([2]uint64{height, 4576})
 
 	block := mapper.BlockMapper(utils.BlockResponse(blockRes[0]), chainID, numberOfTransactions)

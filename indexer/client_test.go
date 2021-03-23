@@ -63,10 +63,6 @@ func (ic *IndexerClientTest) SetupTest() {
 	log, err := zap.NewDevelopment()
 	ic.Require().Nil(err)
 
-	//conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
-	//proxy.BlockConversionDuration = conversionDuration.WithLabels("block")
-	//proxy.TransactionConversionDuration = conversionDuration.WithLabels("transaction")
-
 	proxyClientMock := proxyClientMock{}
 
 	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency)

@@ -232,7 +232,6 @@ func (e *event) appendAmounts(exp int, currency string, divider *big.Float) erro
 
 		e.Amount[strconv.Itoa(i)] = *amount
 		if valuesLen == 1 && i == 0 {
-			// am := *amount
 			e.amount = *amount
 		}
 	}

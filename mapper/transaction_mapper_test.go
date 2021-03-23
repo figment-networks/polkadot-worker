@@ -40,9 +40,6 @@ type TransactionMapperTest struct {
 }
 
 func (tm *TransactionMapperTest) SetupTest() {
-	//conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
-	//transactionConversionDuration = conversionDuration.WithLabels("transaction")
-
 	tm.ChainID = "Polkadot"
 	tm.Currency = "DOT"
 	tm.Exp = 12
