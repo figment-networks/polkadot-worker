@@ -9,6 +9,7 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
+	"google.golang.org/grpc"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -42,16 +43,11 @@ func NewClient(log *zap.Logger, ac accountpb.AccountServiceClient, bc blockpb.Bl
 
 // GetAccountBalance return Account Balance by provided height
 func (c *Client) GetAccountBalance(ctx context.Context, account string, height uint64) (*accountpb.GetByHeightResponse, error) {
-	req := &accountpb.GetByHeightRequest{
-		Height:  int64(height),
-		Address: account,
-	}
-
 	c.log.Debug("Sending GetAccountBalanceByHeight height", zap.Uint64("height", height))
 
 	now := time.Now()
 
-	res, err := c.accountClient.GetByHeight(ctx, req)
+	res, err := c.accountClient.GetByHeight(ctx, &accountpb.GetByHeightRequest{Height: int64(height), Address: account})
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting account balance by height: %d", height)
 		rawRequestGRPCDuration.WithLabels("GetAccountBalanceByHeight", err.Error()).Observe(time.Since(now).Seconds())
@@ -65,15 +61,10 @@ func (c *Client) GetAccountBalance(ctx context.Context, account string, height u
 
 // GetBlockByHeight returns Block by provided height
 func (c *Client) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error) {
-	req := &blockpb.GetByHeightRequest{
-		Height: int64(height),
-	}
-
 	c.log.Debug("Sending GetBlockByHeight height", zap.Uint64("height", height))
 
 	now := time.Now()
-
-	res, err := c.blockClient.GetByHeight(ctx, req)
+	res, err := c.blockClient.GetByHeight(ctx, &blockpb.GetByHeightRequest{Height: int64(height)}, grpc.WaitForReady(true))
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting block by height: %d", height)
 		rawRequestGRPCDuration.WithLabels("GetBlockByHeight", err.Error()).Observe(time.Since(now).Seconds())
@@ -87,15 +78,11 @@ func (c *Client) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.
 
 // GetEventsByHeight returns Event by height
 func (c *Client) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error) {
-	req := &eventpb.GetByHeightRequest{
-		Height: int64(height),
-	}
-
 	c.log.Debug("Sending GetEventsByHeight height", zap.Uint64("height", height))
 
 	now := time.Now()
 
-	res, err := c.eventClient.GetByHeight(ctx, req)
+	res, err := c.eventClient.GetByHeight(ctx, &eventpb.GetByHeightRequest{Height: int64(height)}, grpc.WaitForReady(true))
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting event by height: %d", height)
 		rawRequestGRPCDuration.WithLabels("GetEventsByHeight", err.Error()).Observe(time.Since(now).Seconds())
@@ -109,15 +96,11 @@ func (c *Client) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb
 
 // GetMetaByHeight returns Chain meta by height
 func (c *Client) GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.GetMetaByHeightResponse, error) {
-	req := &chainpb.GetMetaByHeightRequest{
-		Height: int64(height),
-	}
-
 	c.log.Debug("Sending GetMetaByHeight height", zap.Uint64("height", height))
 
 	now := time.Now()
 
-	res, err := c.chainClient.GetMetaByHeight(ctx, req)
+	res, err := c.chainClient.GetMetaByHeight(ctx, &chainpb.GetMetaByHeightRequest{Height: int64(height)})
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting meta by height: %d", height)
 		rawRequestGRPCDuration.WithLabels("GetMetaByHeight", err.Error()).Observe(time.Since(now).Seconds())

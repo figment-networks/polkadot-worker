@@ -85,12 +85,7 @@ func main() {
 		logger.Error(err)
 	}
 
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", metrics.Handler())
-
-	monitor := &health.Monitor{}
-	go monitor.RunChecks(ctx, cfg.HealthCheckInterval)
-	monitor.AttachHttp(mux)
+	registerWorker(ctx, logger.GetLogger(), cfg)
 
 	grpcConn, err := grpc.DialContext(
 		ctx,
@@ -100,13 +95,19 @@ func main() {
 	)
 	if err != nil {
 		log.Fatal("Error while creating connection to polkadot-proxy", zap.Error(err))
+
 	}
 	defer grpcConn.Close()
 
-	registerWorker(ctx, logger.GetLogger(), cfg)
 	indexerClient := createIndexerClient(ctx, logger.GetLogger(), cfg, grpcConn)
-
 	go serveGRPC(logger.GetLogger(), *cfg, indexerClient)
+
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", metrics.Handler())
+
+	monitor := &health.Monitor{}
+	go monitor.RunChecks(ctx, cfg.HealthCheckInterval)
+	monitor.AttachHttp(mux)
 
 	handleHTTP(logger.GetLogger(), *cfg, mux)
 }
@@ -159,7 +160,7 @@ func registerWorker(ctx context.Context, l *zap.Logger, cfg *config.Config) {
 
 	logger.Info(fmt.Sprintf("Self-hostname (%s) is %s:%s ", workerRunID.String(), hostname, cfg.Port))
 
-	c := connectivity.NewWorkerConnections(workerRunID.String(), hostname, cfg.Network, cfg.ChainID, "0.0.1")
+	c := connectivity.NewWorkerConnections(workerRunID.String(), hostname+":"+cfg.Port, cfg.Network, cfg.ChainID, "0.0.1")
 	for _, m := range managers {
 		c.AddManager(m + "/client_ping")
 	}
@@ -171,7 +172,7 @@ func registerWorker(ctx context.Context, l *zap.Logger, cfg *config.Config) {
 
 func handleHTTP(l *zap.Logger, cfg config.Config, mux *http.ServeMux) {
 	s := &http.Server{
-		Addr:         cfg.Address + cfg.HTTPPort,
+		Addr:         cfg.Address + ":" + cfg.HTTPPort,
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
@@ -184,6 +185,7 @@ func handleHTTP(l *zap.Logger, cfg config.Config, mux *http.ServeMux) {
 }
 
 func serveGRPC(l *zap.Logger, cfg config.Config, client *indexer.Client) {
+	defer l.Sync()
 	ctx := context.Background()
 	grpcServer := grpc.NewServer()
 	indexer := grpcIndexer.NewIndexerServer(ctx, client, l)
@@ -191,11 +193,13 @@ func serveGRPC(l *zap.Logger, cfg config.Config, client *indexer.Client) {
 	grpcProtoIndexer.RegisterIndexerServiceServer(grpcServer, indexer)
 
 	l.Info("[GRPC] Listening on", zap.String("address", cfg.Address), zap.String("port", cfg.Port))
-	lis, err := net.Listen("tcp", cfg.Address+cfg.Port)
+	lis, err := net.Listen("tcp", cfg.Address+":"+cfg.Port)
 	if err != nil {
 		l.Error("[GRPC] Error while listening ", zap.String("address", cfg.Address), zap.String("port", cfg.Port), zap.Error(err))
 		return
 	}
 
-	grpcServer.Serve(lis)
+	if err := grpcServer.Serve(lis); err != nil {
+		l.Error("[GRPC] Error while serving ", zap.String("address", cfg.Address), zap.String("port", cfg.Port), zap.Error(err))
+	}
 }

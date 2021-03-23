@@ -350,16 +350,16 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 		return
 	}
 
-	c.log.Debug("Received all %s", zap.Stringer("taskID", tr.Id))
+	c.log.Debug("Received all", zap.Stringer("taskID", tr.Id))
 	close(out)
 
 	for {
 		select {
 		case <-ctx.Done():
-			c.log.Debug("Context done %s", zap.Stringer("taskID", tr.Id))
+			c.log.Debug("Context done", zap.Stringer("taskID", tr.Id))
 			return
 		case <-fin:
-			c.log.Debug("Finished sending all %s", zap.Stringer("taskID", tr.Id))
+			c.log.Debug("Finished sending all", zap.Stringer("taskID", tr.Id))
 			return
 		}
 	}
@@ -433,7 +433,7 @@ func (c *Client) sendTransactionsInRange(ctx context.Context, hr structs.HeightR
 	errChan := make(chan error, count)
 
 	for {
-		c.log.Debug("Sending transactions %v", zap.Uint64("height", actualHeight))
+		c.log.Debug("Sending transactions", zap.Uint64("height", actualHeight))
 
 		c.sendTransactionsByHeight(ctx, out, actualHeight, &wg, errChan)
 
