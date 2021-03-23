@@ -1,21 +1,18 @@
 module github.com/figment-networks/polkadot-worker
 
-go 1.15
+go 1.16
 
 require (
-	github.com/figment-networks/indexer-manager v0.1.0
+	github.com/bearcherian/rollzap v1.0.2
+	github.com/figment-networks/indexer-manager v0.1.2
 	github.com/figment-networks/indexing-engine v0.2.1
-	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210224172531-65528b7dd3f7
-	github.com/google/uuid v1.1.5
+	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210316185637-04d2a3f08d13
+	github.com/google/uuid v1.2.0
+	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/common v0.10.0
-	github.com/sirupsen/logrus v1.7.0 // indirect
+	github.com/rollbar/rollbar-go v1.2.0
 	github.com/stretchr/testify v1.7.0
 	go.uber.org/zap v1.16.0
-	golang.org/x/net v0.0.0-20201010224723-4f7140c49acb // indirect
-	golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c // indirect
-	google.golang.org/grpc v1.35.0
-	google.golang.org/protobuf v1.25.0
-	gopkg.in/yaml.v2 v2.3.0 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	google.golang.org/grpc v1.36.0
+	google.golang.org/protobuf v1.26.0
 )

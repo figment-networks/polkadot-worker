@@ -9,15 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/figment-networks/polkadot-worker/mapper"
-	"github.com/figment-networks/polkadot-worker/proxy"
-
 	"github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
+	"github.com/figment-networks/polkadot-worker/mapper"
+	"github.com/figment-networks/polkadot-worker/proxy"
 
 	"github.com/google/uuid"
-	"github.com/prometheus/common/log"
 	"go.uber.org/zap"
 )
 
@@ -36,9 +34,8 @@ type Client struct {
 	currency        string
 	exp             int
 	maxHeightsToGet uint64
-	version         string
 
-	log     *zap.SugaredLogger
+	log     *zap.Logger
 	proxy   proxy.ClientIface
 	sLock   sync.Mutex
 	streams map[uuid.UUID]*cStructs.StreamAccess
@@ -48,7 +45,7 @@ type Client struct {
 }
 
 // NewClient is a indexer-manager Client constructor
-func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, maxHeightsToGet uint64, chainID, currency, version string) *Client {
+func NewClient(log *zap.Logger, proxy proxy.ClientIface, exp int, maxHeightsToGet uint64, chainID, currency string) *Client {
 	getAccountBalanceDuration = endpointDuration.WithLabels("getAccountBalance")
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
@@ -58,12 +55,11 @@ func NewClient(log *zap.SugaredLogger, proxy proxy.ClientIface, exp int, maxHeig
 		currency:        currency,
 		exp:             exp,
 		maxHeightsToGet: maxHeightsToGet,
-		version:         version,
 		log:             log,
 		proxy:           proxy,
 		streams:         make(map[uuid.UUID]*cStructs.StreamAccess),
 		abMapper:        mapper.NewAccountBalanceMapper(exp, currency),
-		trMapper:        mapper.NewTransactionMapper(exp, chainID, currency, version),
+		trMapper:        mapper.NewTransactionMapper(exp, chainID, currency),
 	}
 }
 
@@ -395,7 +391,7 @@ SendLoop:
 		Order: order,
 		Final: true,
 	}); err != nil {
-		log.Error("Error while sending end response %w", zap.Error(err))
+		c.log.Error("Error while sending end response %w", zap.Error(err))
 	}
 
 	if fin != nil {
@@ -410,7 +406,7 @@ func (c *Client) sendResp(id uuid.UUID, taskType string, payload interface{}, or
 	var buffer bytes.Buffer
 	enc := json.NewEncoder(&buffer)
 	if err := enc.Encode(payload); err != nil {
-		log.Error("Cannot encode payload %w", zap.Error(err))
+		c.log.Error("Cannot encode payload %w", zap.Error(err))
 	}
 
 	tr := cStructs.TaskResponse{
@@ -422,7 +418,7 @@ func (c *Client) sendResp(id uuid.UUID, taskType string, payload interface{}, or
 	buffer.Read(tr.Payload)
 
 	if err := stream.Send(tr); err != nil {
-		log.Error("Error while sending response %w", zap.Error(err))
+		c.log.Error("Error while sending response %w", zap.Error(err))
 	}
 }
 
@@ -437,7 +433,7 @@ func (c *Client) sendTransactionsInRange(ctx context.Context, hr structs.HeightR
 	errChan := make(chan error, count)
 
 	for {
-		c.log.Debugf("Sending transactions %v", zap.Uint64("height", actualHeight))
+		c.log.Debug("Sending transactions %v", zap.Uint64("height", actualHeight))
 
 		c.sendTransactionsByHeight(ctx, out, actualHeight, &wg, errChan)
 

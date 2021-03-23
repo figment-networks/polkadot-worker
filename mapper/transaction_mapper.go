@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/figment-networks/polkadot-worker/proxy"
-
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
@@ -20,6 +18,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const version string = "0.0.1"
+
 func initExpDivider(precision int64) *big.Float {
 	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(precision), nil)
 	return new(big.Float).SetFloat64(float64(div.Int64()))
@@ -30,27 +30,26 @@ type TransactionMapper struct {
 	div      *big.Float
 	chainID  string
 	currency string
-	version  string
 }
 
 // NewTransactionMapper creates a new Transaction mapper
-func NewTransactionMapper(exp int, chainID, currency, version string) *TransactionMapper {
+func NewTransactionMapper(exp int, chainID, currency string) *TransactionMapper {
+	transactionConversionDuration = conversionDuration.WithLabels("transaction")
 	return &TransactionMapper{
 		exp:      exp,
 		div:      initExpDivider(int64(exp)),
 		chainID:  chainID,
 		currency: currency,
-		version:  version,
 	}
 }
 
 // TransactionsMapper maps Block and Transactions response into database Transcations struct
-func (m *TransactionMapper) TransactionsMapper(log *zap.SugaredLogger, blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse,
+func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse,
 	metaRes *chainpb.GetMetaByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
 	var transactions []*structs.Transaction
 	transactionMap := make(map[string]struct{})
 
-	timer := metrics.NewTimer(proxy.TransactionConversionDuration)
+	timer := metrics.NewTimer(transactionConversionDuration)
 	defer timer.ObserveDuration()
 
 	if blockRes == nil || eventRes == nil || metaRes == nil || transactionRes == nil {
@@ -88,7 +87,7 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.SugaredLogger, blockRes 
 			ChainID:   m.chainID,
 			Time:      *time,
 			Fee:       fee,
-			Version:   m.version,
+			Version:   version,
 			Events:    allEvents.getEventsByTrIndex(t.ExtrinsicIndex, strconv.FormatUint(uint64(t.Nonce), 10), t.Hash, time),
 			HasErrors: !t.IsSuccess,
 			Raw:       []byte(t.Raw),

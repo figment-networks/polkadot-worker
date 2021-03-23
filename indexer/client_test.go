@@ -8,12 +8,10 @@ import (
 	"testing"
 
 	"github.com/figment-networks/polkadot-worker/indexer"
-	"github.com/figment-networks/polkadot-worker/proxy"
 	"github.com/figment-networks/polkadot-worker/utils"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
-	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
@@ -65,13 +63,13 @@ func (ic *IndexerClientTest) SetupTest() {
 	log, err := zap.NewDevelopment()
 	ic.Require().Nil(err)
 
-	conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
-	proxy.BlockConversionDuration = conversionDuration.WithLabels("block")
-	proxy.TransactionConversionDuration = conversionDuration.WithLabels("transaction")
+	//conversionDuration := metrics.MustNewHistogramWithTags(metrics.HistogramOptions{})
+	//proxy.BlockConversionDuration = conversionDuration.WithLabels("block")
+	//proxy.TransactionConversionDuration = conversionDuration.WithLabels("transaction")
 
 	proxyClientMock := proxyClientMock{}
 
-	ic.Client = indexer.NewClient(log.Sugar(), &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, ic.Version)
+	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency)
 	ic.ProxyClient = &proxyClientMock
 }
 

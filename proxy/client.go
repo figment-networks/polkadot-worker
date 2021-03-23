@@ -25,7 +25,7 @@ type ClientIface interface {
 
 // Client connecting to polkadot-proxy
 type Client struct {
-	log *zap.SugaredLogger
+	log *zap.Logger
 
 	accountClient     accountpb.AccountServiceClient
 	blockClient       blockpb.BlockServiceClient
@@ -35,15 +35,9 @@ type Client struct {
 }
 
 // NewClient is a polkadot-proxy Client constructor
-func NewClient(log *zap.SugaredLogger, ac accountpb.AccountServiceClient, bc blockpb.BlockServiceClient,
+func NewClient(log *zap.Logger, ac accountpb.AccountServiceClient, bc blockpb.BlockServiceClient,
 	cc chainpb.ChainServiceClient, ec eventpb.EventServiceClient, tc transactionpb.TransactionServiceClient) *Client {
-	initMetrics()
 	return &Client{log: log, accountClient: ac, blockClient: bc, chainClient: cc, eventClient: ec, transactionClient: tc}
-}
-
-func initMetrics() {
-	BlockConversionDuration = conversionDuration.WithLabels("block")
-	TransactionConversionDuration = conversionDuration.WithLabels("transaction")
 }
 
 // GetAccountBalance return Account Balance by provided height
@@ -53,18 +47,18 @@ func (c *Client) GetAccountBalance(ctx context.Context, account string, height u
 		Address: account,
 	}
 
-	c.log.Debugf("Sending GetAccountBalanceByHeight height: %d", height)
+	c.log.Debug("Sending GetAccountBalanceByHeight height", zap.Uint64("height", height))
 
 	now := time.Now()
 
 	res, err := c.accountClient.GetByHeight(ctx, req)
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting account balance by height: %d", height)
-		requestDuration.WithLabels("GetAccountBalanceByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		rawRequestGRPCDuration.WithLabels("GetAccountBalanceByHeight", err.Error()).Observe(time.Since(now).Seconds())
 		return nil, err
 	}
 
-	requestDuration.WithLabels("GetAccountBalanceByHeight", "OK").Observe(time.Since(now).Seconds())
+	rawRequestGRPCDuration.WithLabels("GetAccountBalanceByHeight", "OK").Observe(time.Since(now).Seconds())
 
 	return res, err
 }
@@ -75,18 +69,18 @@ func (c *Client) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.
 		Height: int64(height),
 	}
 
-	c.log.Debugf("Sending GetBlockByHeight height: %d", height)
+	c.log.Debug("Sending GetBlockByHeight height", zap.Uint64("height", height))
 
 	now := time.Now()
 
 	res, err := c.blockClient.GetByHeight(ctx, req)
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting block by height: %d", height)
-		requestDuration.WithLabels("GetBlockByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		rawRequestGRPCDuration.WithLabels("GetBlockByHeight", err.Error()).Observe(time.Since(now).Seconds())
 		return nil, err
 	}
 
-	requestDuration.WithLabels("GetBlockByHeight", "OK").Observe(time.Since(now).Seconds())
+	rawRequestGRPCDuration.WithLabels("GetBlockByHeight", "OK").Observe(time.Since(now).Seconds())
 
 	return res, err
 }
@@ -97,18 +91,18 @@ func (c *Client) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb
 		Height: int64(height),
 	}
 
-	c.log.Debugf("Sending GetEventsByHeight height: %d", height)
+	c.log.Debug("Sending GetEventsByHeight height", zap.Uint64("height", height))
 
 	now := time.Now()
 
 	res, err := c.eventClient.GetByHeight(ctx, req)
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting event by height: %d", height)
-		requestDuration.WithLabels("GetEventsByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		rawRequestGRPCDuration.WithLabels("GetEventsByHeight", err.Error()).Observe(time.Since(now).Seconds())
 		return nil, err
 	}
 
-	requestDuration.WithLabels("GetEventsByHeight", "OK").Observe(time.Since(now).Seconds())
+	rawRequestGRPCDuration.WithLabels("GetEventsByHeight", "OK").Observe(time.Since(now).Seconds())
 
 	return res, err
 }
@@ -119,18 +113,18 @@ func (c *Client) GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.G
 		Height: int64(height),
 	}
 
-	c.log.Debugf("Sending GetMetaByHeight height: %d", height)
+	c.log.Debug("Sending GetMetaByHeight height", zap.Uint64("height", height))
 
 	now := time.Now()
 
 	res, err := c.chainClient.GetMetaByHeight(ctx, req)
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting meta by height: %d", height)
-		requestDuration.WithLabels("GetMetaByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		rawRequestGRPCDuration.WithLabels("GetMetaByHeight", err.Error()).Observe(time.Since(now).Seconds())
 		return nil, err
 	}
 
-	requestDuration.WithLabels("GetMetaByHeight", "OK").Observe(time.Since(now).Seconds())
+	rawRequestGRPCDuration.WithLabels("GetMetaByHeight", "OK").Observe(time.Since(now).Seconds())
 
 	return res, err
 }
@@ -141,18 +135,18 @@ func (c *Client) GetTransactionsByHeight(ctx context.Context, height uint64) (*t
 		Height: int64(height),
 	}
 
-	c.log.Debugf("Sending GetTransactionsByHeight height: %d", height)
+	c.log.Debug("Sending GetTransactionsByHeight height", zap.Uint64("height", height))
 
 	now := time.Now()
 
 	res, err := c.transactionClient.GetByHeight(ctx, req)
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting transaction by height: %d", height)
-		requestDuration.WithLabels("GetTransactionsByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		rawRequestGRPCDuration.WithLabels("GetTransactionsByHeight", err.Error()).Observe(time.Since(now).Seconds())
 		return nil, err
 	}
 
-	requestDuration.WithLabels("GetTransactionsByHeight", "OK").Observe(time.Since(now).Seconds())
+	rawRequestGRPCDuration.WithLabels("GetTransactionsByHeight", "OK").Observe(time.Since(now).Seconds())
 
 	return res, err
 }
