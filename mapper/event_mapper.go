@@ -86,7 +86,7 @@ func getEvent(log *zap.Logger, evpb *eventpb.Event, currency string, exp int, di
 
 	e.Module = evpb.Section
 
-	e.Type = []string{evpb.Method}
+	e.Type = []string{strings.ToLower(evpb.Method)}
 	if e.eventType != nil {
 		e.Type = append(e.Type, e.eventType...)
 	}
@@ -118,7 +118,7 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error 
 		switch v {
 		case "account", "approving", "authority_id", "multisig", "stash", "unvested", "target",
 			"sub", "main", "cancelling", "lost", "rescuer", "sender", "voter", "founder", "candidate",
-			"candidate_id", "vouching", "nominator", "validator", "finder":
+			"candidate_id", "vouching", "nominator", "validator", "finder", "real":
 			if accountID, err := getAccountID(ev.Data[i]); err == nil {
 				e.accountIDs = append(e.accountIDs, accountID)
 			}
@@ -136,7 +136,7 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error 
 		case "info", "tip_hash", "call_hash", "index", "new_members", "proposal_index", "compute",
 			"destination_status", "is_ok", "threshold", "until", "authority_set", "registrar_index",
 			"timepoint", "when", "task", "id", "result", "judged", "era_index", "session_index",
-			"proposal_hash", "yes", "no":
+			"proposal_hash", "yes", "no", "proxy":
 			break
 		default:
 			return fmt.Errorf("Unknown value to parse event %q values: %v", v, values)

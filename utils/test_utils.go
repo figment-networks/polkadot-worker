@@ -3,6 +3,7 @@ package utils
 import (
 	"math/big"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/figment-networks/indexer-manager/structs"
@@ -144,7 +145,7 @@ func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bRe
 	for i, e := range evResp {
 		sut.Require().Equal(strconv.Itoa(int(e.Index)), transaction.Events[i].ID)
 
-		expectedType := e.Method
+		expectedType := strings.ToLower(e.Method)
 		for _, d := range e.EventData {
 			if d.Name == "DispatchError" {
 				expectedType = "error"
@@ -177,18 +178,6 @@ func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bRe
 			sut.Require().Equal(e.RecipientID, transfers[0].Account.ID)
 
 			validateAmount(sut, &transfers[0].Amounts[0], int(exp), e.Amount, e.AmountText, currency)
-		}
-
-		for _, aa := range e.Additional {
-			for _, a := range aa {
-				founded := false
-				for j := 0; j < len(e.Additional); j++ {
-					if sut.Contains(event.Additional["attributes"][j], a) {
-						founded = true
-					}
-				}
-				sut.Require().True(founded)
-			}
 		}
 	}
 }

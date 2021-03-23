@@ -137,17 +137,30 @@ func parseInt(str string) (int, error) {
 
 func (m *TransactionMapper) getTransactionFee(partialFeeStr, tipStr string) ([]structs.TransactionAmount, error) {
 	var ok bool
-	var fee, tip *big.Int
+	var amount, fee, tip *big.Int
 
-	if fee, ok = new(big.Int).SetString(partialFeeStr, 10); !ok {
-		return nil, fmt.Errorf("Could not parse transaction partial fee %q", partialFeeStr)
+	if partialFeeStr == "" && tipStr == "" {
+		return nil, nil
 	}
 
-	if tip, ok = new(big.Int).SetString(tipStr, 10); !ok {
-		return nil, fmt.Errorf("Could not parse transaction tip %q", tipStr)
+	if partialFeeStr != "" {
+		if fee, ok = new(big.Int).SetString(partialFeeStr, 10); !ok {
+			return nil, fmt.Errorf("Could not parse transaction partial fee %q", partialFeeStr)
+		} else {
+			amount = fee
+		}
 	}
 
-	amount := new(big.Int).Add(fee, tip)
+	if tipStr != "" {
+		if tip, ok = new(big.Int).SetString(tipStr, 10); !ok {
+			return nil, fmt.Errorf("Could not parse transaction tip %q", tipStr)
+		}
+		if fee == nil {
+			amount = tip
+		} else {
+			amount = new(big.Int).Add(fee, tip)
+		}
+	}
 
 	textAmount, err := countCurrencyAmount(m.exp, amount.String(), m.div)
 	if err != nil {
