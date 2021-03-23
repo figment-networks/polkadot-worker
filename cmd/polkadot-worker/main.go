@@ -159,7 +159,7 @@ func registerWorker(ctx context.Context, l *zap.Logger, cfg *config.Config) {
 
 	logger.Info(fmt.Sprintf("Self-hostname (%s) is %s:%s ", workerRunID.String(), hostname, cfg.Port))
 
-	c := connectivity.NewWorkerConnections(workerRunID.String(), hostname+":"+cfg.Port, cfg.Network, cfg.ChainID, config.Version)
+	c := connectivity.NewWorkerConnections(workerRunID.String(), hostname+":"+cfg.Port, cfg.Network, cfg.ChainID, "0.0.1")
 	for _, m := range managers {
 		c.AddManager(m + "/client_ping")
 	}
