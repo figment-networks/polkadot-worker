@@ -566,7 +566,7 @@ func (ic *IndexerClientTest) TestGetLatest_MetaResponseError() {
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Error while getting Transactions with given range: new meta error ")
+		ic.Require().Contains(response.Error.Msg, "Error while getting Transactions with given range: new meta error")
 		return
 	}
 }
@@ -819,7 +819,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetEventByHeightError() {
 			continue
 		}
 
-		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: new event error one , new event error two")
+		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: new event error one")
 		return
 	}
 }
