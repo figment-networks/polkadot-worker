@@ -9,6 +9,7 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 
 	"github.com/pkg/errors"
@@ -28,6 +29,8 @@ type ClientIface interface {
 type Client struct {
 	log *zap.Logger
 
+	rateLimiter *rate.Limiter
+
 	accountClient     accountpb.AccountServiceClient
 	blockClient       blockpb.BlockServiceClient
 	chainClient       chainpb.ChainServiceClient
@@ -36,14 +39,19 @@ type Client struct {
 }
 
 // NewClient is a polkadot-proxy Client constructor
-func NewClient(log *zap.Logger, ac accountpb.AccountServiceClient, bc blockpb.BlockServiceClient,
+func NewClient(log *zap.Logger, rl *rate.Limiter, ac accountpb.AccountServiceClient, bc blockpb.BlockServiceClient,
 	cc chainpb.ChainServiceClient, ec eventpb.EventServiceClient, tc transactionpb.TransactionServiceClient) *Client {
-	return &Client{log: log, accountClient: ac, blockClient: bc, chainClient: cc, eventClient: ec, transactionClient: tc}
+	return &Client{log: log, rateLimiter: rl, accountClient: ac, blockClient: bc, chainClient: cc, eventClient: ec, transactionClient: tc}
 }
 
 // GetAccountBalance return Account Balance by provided height
 func (c *Client) GetAccountBalance(ctx context.Context, account string, height uint64) (*accountpb.GetByHeightResponse, error) {
 	c.log.Debug("Sending GetAccountBalanceByHeight height", zap.Uint64("height", height))
+
+	err := c.rateLimiter.Wait(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	now := time.Now()
 
@@ -63,6 +71,11 @@ func (c *Client) GetAccountBalance(ctx context.Context, account string, height u
 func (c *Client) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error) {
 	c.log.Debug("Sending GetBlockByHeight height", zap.Uint64("height", height))
 
+	err := c.rateLimiter.Wait(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now()
 	res, err := c.blockClient.GetByHeight(ctx, &blockpb.GetByHeightRequest{Height: int64(height)}, grpc.WaitForReady(true))
 	if err != nil {
@@ -79,6 +92,11 @@ func (c *Client) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.
 // GetEventsByHeight returns Event by height
 func (c *Client) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error) {
 	c.log.Debug("Sending GetEventsByHeight height", zap.Uint64("height", height))
+
+	err := c.rateLimiter.Wait(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	now := time.Now()
 
@@ -98,6 +116,11 @@ func (c *Client) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb
 func (c *Client) GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.GetMetaByHeightResponse, error) {
 	c.log.Debug("Sending GetMetaByHeight height", zap.Uint64("height", height))
 
+	err := c.rateLimiter.Wait(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now()
 
 	res, err := c.chainClient.GetMetaByHeight(ctx, &chainpb.GetMetaByHeightRequest{Height: int64(height)})
@@ -116,6 +139,11 @@ func (c *Client) GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.G
 func (c *Client) GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error) {
 	req := &transactionpb.GetByHeightRequest{
 		Height: int64(height),
+	}
+
+	err := c.rateLimiter.Wait(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	c.log.Debug("Sending GetTransactionsByHeight height", zap.Uint64("height", height))
