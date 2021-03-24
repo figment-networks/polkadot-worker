@@ -233,17 +233,17 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
-	block, err := c.proxy.GetBlockByHeight(ctx, 0)
+	head, err := c.proxy.GetHead(ctx)
 	if err != nil {
 		stream.Send(cStructs.TaskResponse{
 			Id:    tr.Id,
-			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch latest block from proxy: %s", err.Error())},
+			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch head from proxy: %s", err.Error())},
 			Final: true,
 		})
 		return
 	}
 
-	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, uint64(block.Block.Header.Height))
+	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, uint64(head.GetHeight()))
 
 	if err := c.sendTransactionsInRange(ctx, hr, out); err != nil {
 		stream.Send(cStructs.TaskResponse{

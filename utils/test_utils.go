@@ -34,6 +34,12 @@ func BlockResponse(resp BlockResp) *blockpb.GetByHeightResponse {
 	}
 }
 
+func HeadResponse(height int64) *chainpb.GetHeadResponse {
+	return &chainpb.GetHeadResponse{
+		Height: height,
+	}
+}
+
 type EventsResp struct {
 	Index          int64
 	ExtrinsicIndex int64

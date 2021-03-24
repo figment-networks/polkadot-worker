@@ -258,7 +258,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_UnmarshalError() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_OK() {
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[1]), nil)
+	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(utils.HeadResponse(int64(ic.Height[1])), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.BlockResponse(ic.BlockResponse[1]), nil)
 	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.EventsResponse(ic.EventsResponse[0]), nil)
@@ -367,9 +367,9 @@ func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
 	}
 }
 
-func (ic *IndexerClientTest) TestGetLatest_BlockResponseError() {
-	e := errors.New("new block error")
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(&blockpb.GetByHeightResponse{}, e)
+func (ic *IndexerClientTest) TestGetLatest_HeadResponseError() {
+	e := errors.New("new head error")
+	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(&chainpb.GetHeadResponse{}, e)
 
 	req := structs.LatestDataRequest{
 		LastHeight: uint64(ic.Height[0]),
@@ -400,13 +400,13 @@ func (ic *IndexerClientTest) TestGetLatest_BlockResponseError() {
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Could not fetch latest block from proxy: new block error")
+		ic.Require().Contains(response.Error.Msg, "Could not fetch head from proxy: new head error")
 		return
 	}
 }
 
 func (ic *IndexerClientTest) TestGetLatest_BlockResponseError2() {
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(utils.HeadResponse(int64(ic.Height[0])), nil)
 
 	e := errors.New("new block error")
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(&blockpb.GetByHeightResponse{}, e)
@@ -446,7 +446,7 @@ func (ic *IndexerClientTest) TestGetLatest_BlockResponseError2() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_TransactionResponseError() {
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(utils.HeadResponse(int64(ic.Height[0])), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 
 	e := errors.New("new transaction error")
@@ -487,7 +487,7 @@ func (ic *IndexerClientTest) TestGetLatest_TransactionResponseError() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_EventResponseError() {
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(utils.HeadResponse(int64(ic.Height[0])), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
 
@@ -529,7 +529,7 @@ func (ic *IndexerClientTest) TestGetLatest_EventResponseError() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_MetaResponseError() {
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(utils.HeadResponse(int64(ic.Height[0])), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.EventsResponse(ic.EventsResponse[0]), nil)
 	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
@@ -899,6 +899,11 @@ func (m proxyClientMock) GetEventsByHeight(ctx context.Context, height uint64) (
 func (m proxyClientMock) GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.GetMetaByHeightResponse, error) {
 	args := m.Called(ctx, height)
 	return args.Get(0).(*chainpb.GetMetaByHeightResponse), args.Error(1)
+}
+
+func (m proxyClientMock) GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(*chainpb.GetHeadResponse), args.Error(1)
 }
 
 func (m proxyClientMock) GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error) {
