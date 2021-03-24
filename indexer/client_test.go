@@ -901,6 +901,11 @@ func (m proxyClientMock) GetMetaByHeight(ctx context.Context, height uint64) (*c
 	return args.Get(0).(*chainpb.GetMetaByHeightResponse), args.Error(1)
 }
 
+func (m proxyClientMock) GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(*chainpb.GetHeadResponse), args.Error(1)
+}
+
 func (m proxyClientMock) GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error) {
 	args := m.Called(ctx, height)
 	return args.Get(0).(*transactionpb.GetByHeightResponse), args.Error(1)
