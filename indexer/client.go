@@ -19,6 +19,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const page = 100
+
 var (
 	// ErrBadRequest is returned when cannot unmarshal message
 	ErrBadRequest = errors.New("bad request")
@@ -78,7 +80,7 @@ func (c *Client) RegisterStream(ctx context.Context, stream *cStructs.StreamAcce
 	return nil
 }
 
-// CloseStream cloes connection with indexer-manager
+// CloseStream closes connection with indexer-manager
 func (c *Client) CloseStream(ctx context.Context, streamID uuid.UUID) error {
 	c.sLock.Lock()
 	defer c.sLock.Unlock()
@@ -113,6 +115,8 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 				c.GetTransactions(ctxWithTimeout, taskRequest, stream)
 			case structs.ReqIDLatestData:
 				c.GetLatest(ctxWithTimeout, taskRequest, stream)
+			case "":
+				fmt.Println("empty")
 			default:
 				stream.Send(cStructs.TaskResponse{
 					Id: taskRequest.Id,
@@ -153,8 +157,8 @@ func (c *Client) GetAccountBalance(ctx context.Context, tr cStructs.TaskRequest,
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	out := make(chan cStructs.OutResp, 1)
-	fin := make(chan bool, 1)
+	out := make(chan cStructs.OutResp, 2)
+	fin := make(chan bool, 2)
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
@@ -169,6 +173,8 @@ func (c *Client) GetAccountBalance(ctx context.Context, tr cStructs.TaskRequest,
 		close(out)
 		return
 	}
+
+	close(out)
 
 	for {
 		select {
@@ -197,7 +203,6 @@ func (c *Client) sendAccountBalance(ctx context.Context, account string, height 
 		Type:    "AccountBalance",
 		Payload: *balanceSummary,
 	}
-	close(out)
 
 	return nil
 }
@@ -228,7 +233,7 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	out := make(chan cStructs.OutResp, 3)
+	out := make(chan cStructs.OutResp, page*2+1)
 	fin := make(chan bool, 2)
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
@@ -333,8 +338,8 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	out := make(chan cStructs.OutResp, hr.EndHeight-hr.StartHeight+1)
-	fin := make(chan bool, 1)
+	out := make(chan cStructs.OutResp, page*2+1)
+	fin := make(chan bool, 2)
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
@@ -376,7 +381,7 @@ SendLoop:
 			ctxDone = true
 			break SendLoop
 		case t, ok := <-in:
-			if !ok && t.Type == "" {
+			if !ok {
 				break SendLoop
 			}
 
@@ -592,76 +597,6 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 
 	if transactions, err = c.trMapper.TransactionsMapper(c.log, blResp, evResp, metaResp, trResp); err != nil {
 		return nil, nil, err
-	}
-
-	return
-}
-
-func (c *Client) sendTransactionsByHeight(ctx context.Context, out chan cStructs.OutResp, height uint64, wg *sync.WaitGroup, err chan error) {
-	if transactions := c.getTransactions(ctx, out, height, err); transactions != nil {
-		for _, transaction := range transactions {
-			t := *transaction
-			out <- cStructs.OutResp{
-				Type:    "Transaction",
-				Payload: t,
-			}
-		}
-	}
-	if wg != nil {
-		wg.Done()
-	}
-}
-
-func (c *Client) getTransactions(ctx context.Context, out chan cStructs.OutResp, height uint64, err chan error) (transactionMapped []*structs.Transaction) {
-	block, e := c.proxy.GetBlockByHeight(ctx, height)
-	if e != nil {
-		err <- e
-		ctx.Done()
-		return nil
-	}
-
-	transactions, e := c.proxy.GetTransactionsByHeight(ctx, height)
-	if e != nil {
-		err <- e
-		ctx.Done()
-		return nil
-	}
-
-	if transactions == nil {
-		out <- cStructs.OutResp{
-			Type:    "Block",
-			Payload: mapper.BlockMapper(block, c.chainID, 0),
-		}
-		return nil
-	}
-
-	out <- cStructs.OutResp{
-		Type: "Block",
-		Payload: mapper.BlockMapper(
-			block,
-			c.chainID,
-			uint64(len(transactions.Transactions)),
-		),
-	}
-
-	events, e := c.proxy.GetEventsByHeight(ctx, height)
-	if e != nil {
-		err <- e
-		ctx.Done()
-		return nil
-	}
-
-	meta, e := c.proxy.GetMetaByHeight(ctx, height)
-	if e != nil {
-		err <- e
-		ctx.Done()
-		return nil
-	}
-
-	if transactionMapped, e = c.trMapper.TransactionsMapper(c.log, block, events, meta, transactions); e != nil {
-		err <- e
-		ctx.Done()
-		return nil
 	}
 
 	return

@@ -105,7 +105,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_OK() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.Require().Nil(ic.CloseStream(context.Background(), stream.StreamID))
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	accountBalance, endFounded := false, false
 	for s := range stream.ResponseListener {
@@ -169,7 +169,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_ProxyError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.Require().Nil(ic.CloseStream(context.Background(), stream.StreamID))
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -218,7 +218,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_MapperError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.Require().Nil(ic.CloseStream(context.Background(), stream.StreamID))
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -244,7 +244,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_UnmarshalError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -289,7 +289,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.Require().Nil(ic.CloseStream(context.Background(), stream.StreamID))
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	countBlock, countTransaction, endFounded := 0, 0, false
 	for s := range stream.ResponseListener {
@@ -354,7 +354,7 @@ func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -392,7 +392,7 @@ func (ic *IndexerClientTest) TestGetLatest_HeadResponseError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -432,7 +432,7 @@ func (ic *IndexerClientTest) TestGetLatest_BlockResponseError2() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -473,7 +473,7 @@ func (ic *IndexerClientTest) TestGetLatest_TransactionResponseError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -515,7 +515,7 @@ func (ic *IndexerClientTest) TestGetLatest_EventResponseError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -558,7 +558,7 @@ func (ic *IndexerClientTest) TestGetLatest_MetaResponseError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -603,7 +603,7 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	countBlock, countTransaction, endFounded := 0, 0, false
 	for s := range stream.ResponseListener {
@@ -669,7 +669,7 @@ func (ic *IndexerClientTest) TestGetTransactions_HeightRangeUnmarshalError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -716,7 +716,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetBlockByHeightError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -762,7 +762,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetTransactionByHeightError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -812,7 +812,7 @@ func (ic *IndexerClientTest) TestGetTransactions_GetEventByHeightError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -854,7 +854,7 @@ func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
 	defer ic.CloseStream(context.Background(), stream.StreamID)
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
