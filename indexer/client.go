@@ -115,8 +115,6 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 				c.GetTransactions(ctxWithTimeout, taskRequest, stream)
 			case structs.ReqIDLatestData:
 				c.GetLatest(ctxWithTimeout, taskRequest, stream)
-			case "":
-				fmt.Println("empty")
 			default:
 				stream.Send(cStructs.TaskResponse{
 					Id: taskRequest.Id,
