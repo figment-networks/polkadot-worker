@@ -37,6 +37,7 @@ type Config struct {
 	Hostname        string        `json:"hostname" envconfig:"HOSTNAME"`
 
 	MaximumHeightsToGet float64 `json:"maximum_heights_to_get" envconfig:"MAXIMUM_HEIGHTS_TO_GET" default:"10000"`
+	ReqPerSecond        int     `json:"requests_per_second" envconfig:"REQUESTS_PER_SECOND" default:"20"`
 
 	// Rollbar
 	RollbarAccessToken string `json:"rollbar_access_token" envconfig:"ROLLBAR_ACCESS_TOKEN"`

@@ -105,7 +105,7 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 		case taskRequest := <-stream.RequestListener:
 			c.log.Debug("Received task request", zap.Stringer("taskID", taskRequest.Id), zap.String("type", taskRequest.Type))
 
-			ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Minute)
 			defer cancel()
 
 			switch taskRequest.Type {
