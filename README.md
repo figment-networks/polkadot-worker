@@ -27,35 +27,118 @@ To compile sources you need to have go 1.14.1+ installed.
 ### Running
 Worker also need some basic config:
 
-```bash
-    {
-        "indexer_manager":  {
-            "base_url": "127.0.0.1:8085",
-            "host": "host.docker.internal",
-            "listen_port": ":3000"
-        },
-        "proxy_base_url": "localhost:50051",
-        "worker": {
-            "chain_id": "Polkadot",
-            "currency": "DOT",
-            "exp":      12,
-            "log_level": "info",
-            "network": "Polkadot",
-            "version": "0.0.1",
-            "host": "0.0.0.0",
-            "port": ":3001"
-        }
-    }
+```json
+{
+    "address": "0.0.0.0",
+    "port": "3000",
+    "http_port":"8087",
+    "polkadot_proxy_addr":  "localhost:50051",
+    "network": "polkadot",
+    "chain_id": "mainnet",
+    "managers":"0.0.0.0:8085",
+    "currency": "DOT",
+    "exp": "10",
+}
 ```
+where`polkadot_proxy_addr` is a http address to a running instance of [polkadot proxy](https://github.com/figment-networks/polkadothub-proxy), 
+`managers` is a a comma-separated list of manager ip:port addresses that worker will connect to, `currency` is the unit of currency and `exp` is the number of decimal places required to convert planck to desired currency unit (see [here](https://wiki.polkadot.network/docs/en/learn-DOT)).
+
 
 After running binary worker should successfully register itself to the manager.
 
 ## Event Types
-List of currently supporter event types in polkadot-worker are:
-- DustLost
-- KilledAccount
-- Transfer
-- BatchCompleted
-- Deposit
-- ExtrinsicSuccess
-- ElectionProviderMultiPhase
+List of currently supporter event types in polkadot-worker are (listed by modules):
+
+balances:
+- `balanceset`
+- `deposit`
+- `dustlost`
+- `endowed`
+- `reserverepatriated`
+- `reserved`
+- `transfer`
+- `unreserved`
+
+council:
+- `approved`
+- `closed`
+- `disapproved`
+- `executed`
+- `proposed`
+- `voted`
+
+democracy:
+- `cancelled`
+- `delegated`
+- `preimagenoted`
+- `preimagereaped`
+- `proposed`
+- `started`
+- `undelegated`
+
+identity:
+- `identitycleared`
+- `identitykilled`
+- `identityset`
+- `judgementgiven`
+- `judgementrequested`
+- `judgementunrequested`
+- `registraradded`
+- `subidentityadded`
+- `subidentiyremoved`
+- `subidentityrevoked`
+
+indices:
+- `indexassigned`
+- `indexfreed`
+- `indexfrozen`
+
+multisig:
+- `multisigapproval`
+- `multisigcancelled`
+- `multisigexecuted`
+- `newmultisig`
+
+proxy:
+- `announced`
+- `anonymouscreated`
+- `proxyexecuted`
+
+staking:
+- `bonded`
+- `reward`
+- `slash`
+
+system:
+- `extrinsicfailed`
+- `extrinsicsuccess`
+- `killedaccount`
+- `newaccount`
+
+technicalcommittee:
+- `approved`
+- `closed`
+- `disapproved`
+- `executed`
+- `memberexecuted`
+- `proposed`
+- `voted`
+
+tips:
+- `newtip`
+- `tipclosed`
+- `tipclosing`
+- `tipretracted`
+- `tipslashed`
+
+treasury:
+- `proposed`
+- `rejected`
+
+utility:
+- `batchcompleted`
+- `batchinterrupted`
+
+vesting:
+- `vestingupdated`
+- `vestingcompleted`
