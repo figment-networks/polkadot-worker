@@ -22,14 +22,34 @@ type BlockResp struct {
 	Time   *timestamppb.Timestamp
 }
 
-func BlockResponse(resp BlockResp) *blockpb.GetByHeightResponse {
+func BlockResponse(block BlockResp, trs []TransactionsResp, evts [][]EventsResp) *blockpb.GetByHeightResponse {
+	extrinsics := make([]*transactionpb.Transaction, len(trs))
+
+	for i, t := range trs {
+		extrinsics[i] = &transactionpb.Transaction{
+			ExtrinsicIndex: t.Index,
+			Args:           t.Args,
+			Hash:           t.Hash,
+			IsSuccess:      t.IsSuccess,
+			PartialFee:     t.Fee,
+			Raw:            t.Raw,
+			Nonce:          t.Nonce,
+			Method:         t.Method,
+			Section:        t.Section,
+			Tip:            t.Tip,
+			Time:           t.Time,
+			Events:         events(evts[i]),
+		}
+	}
+
 	return &blockpb.GetByHeightResponse{
 		Block: &blockpb.Block{
-			BlockHash: resp.Hash,
+			BlockHash: block.Hash,
 			Header: &blockpb.Header{
-				Height: resp.Height,
-				Time:   resp.Time,
+				Height: block.Height,
+				Time:   block.Time,
 			},
+			Extrinsics: extrinsics,
 		},
 	}
 }
@@ -43,11 +63,13 @@ func HeadResponse(height int64) *chainpb.GetHeadResponse {
 type EventsResp struct {
 	Index          int64
 	ExtrinsicIndex int64
-	Description    string
-	Method         string
-	Phase          string
-	Section        string
-	EventData      []EventData
+
+	Description string
+	Error       string
+	Method      string
+	Phase       string
+	Section     string
+	EventData   []EventData
 
 	AccountsID  []string
 	Additional  [][]string
@@ -63,6 +85,10 @@ type EventData struct {
 }
 
 func EventsResponse(resp []EventsResp) *eventpb.GetByHeightResponse {
+	return &eventpb.GetByHeightResponse{Events: events(resp)}
+}
+
+func events(resp []EventsResp) []*eventpb.Event {
 	evts := make([]*eventpb.Event, len(resp))
 
 	for i, e := range resp {
@@ -86,7 +112,7 @@ func EventsResponse(resp []EventsResp) *eventpb.GetByHeightResponse {
 		}
 	}
 
-	return &eventpb.GetByHeightResponse{Events: evts}
+	return evts
 }
 
 type MetaResp struct {
@@ -134,57 +160,60 @@ func TransactionsResponse(resp TransactionsResp) *transactionpb.GetByHeightRespo
 	}
 }
 
-func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp TransactionsResp, evResp []EventsResp, mResp MetaResp, chainID, currency string, exp int32) {
+func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp []TransactionsResp, evResp []EventsResp, mResp MetaResp, chainID, currency string, exp int32) {
 	sut.Require().Equal(bResp.Hash, transaction.BlockHash)
 	sut.Require().EqualValues(bResp.Height, transaction.Height)
 	sut.Require().EqualValues(bResp.Height, transaction.Height)
 
-	sut.Require().Equal(trResp.Hash, transaction.Hash)
-	sut.Require().Equal(chainID, transaction.ChainID)
-	sut.Require().Equal(trResp.Time, strconv.Itoa(int(transaction.Time.Unix())))
-	sut.Require().Equal("0.0.1", transaction.Version)
-	sut.Require().Equal(!trResp.IsSuccess, transaction.HasErrors)
+	for _, t := range trResp {
+		sut.Require().Equal(t.Hash, transaction.Hash)
+		sut.Require().Equal(chainID, transaction.ChainID)
+		sut.Require().Equal(t.Time, strconv.Itoa(int(transaction.Time.Unix())))
+		sut.Require().Equal("0.0.1", transaction.Version)
+		sut.Require().Equal(!t.IsSuccess, transaction.HasErrors)
 
-	validateAmount(sut, &transaction.Fee[0], int(exp), trResp.FeeAmount, trResp.FeeAmountTxt, currency)
+		validateAmount(sut, &transaction.Fee[0], int(exp), t.FeeAmount, t.FeeAmountTxt, currency)
 
-	sut.Require().Len(transaction.Events, len(evResp))
-	for i, e := range evResp {
-		sut.Require().Equal(strconv.Itoa(int(e.Index)), transaction.Events[i].ID)
+		sut.Require().Len(transaction.Events, len(evResp))
+		for i, e := range evResp {
+			sut.Require().Equal(strconv.Itoa(int(e.Index)), transaction.Events[i].ID)
 
-		expectedType := strings.ToLower(e.Method)
-		for _, d := range e.EventData {
-			if d.Name == "DispatchError" {
-				expectedType = "error"
+			expectedType := strings.ToLower(e.Method)
+			for _, d := range e.EventData {
+				if d.Name == "DispatchError" {
+					expectedType = "error"
+				}
+			}
+
+			event := transaction.Events[i].Sub[0]
+			sut.Require().Equal(e.Section, event.Module)
+			sut.Require().Equal([]string{expectedType}, event.Type)
+			sut.Require().Equal(t.Time, strconv.Itoa(int(event.Completion.Unix())))
+
+			if a, ok := event.Amount["0"]; ok {
+				validateAmount(sut, &a, int(exp), e.Amount, e.AmountText, currency)
+			}
+
+			if accounts, ok := event.Node["versions"]; ok {
+				for i, account := range accounts {
+					sut.Require().Equal(e.AccountsID[i], account.ID)
+				}
+			}
+
+			if account, ok := event.Node["sender"]; ok {
+				sut.Require().Equal(e.SenderID, account[0].ID)
+			}
+
+			if account, ok := event.Node["recipient"]; ok {
+				sut.Require().Equal(e.RecipientID, account[0].ID)
+
+				transfers := event.Transfers[e.RecipientID]
+				sut.Require().Equal(e.RecipientID, transfers[0].Account.ID)
+
+				validateAmount(sut, &transfers[0].Amounts[0], int(exp), e.Amount, e.AmountText, currency)
 			}
 		}
 
-		event := transaction.Events[i].Sub[0]
-		sut.Require().Equal(e.Section, event.Module)
-		sut.Require().Equal([]string{expectedType}, event.Type)
-		sut.Require().Equal(trResp.Time, strconv.Itoa(int(event.Completion.Unix())))
-
-		if a, ok := event.Amount["0"]; ok {
-			validateAmount(sut, &a, int(exp), e.Amount, e.AmountText, currency)
-		}
-
-		if accounts, ok := event.Node["versions"]; ok {
-			for i, account := range accounts {
-				sut.Require().Equal(e.AccountsID[i], account.ID)
-			}
-		}
-
-		if account, ok := event.Node["sender"]; ok {
-			sut.Require().Equal(e.SenderID, account[0].ID)
-		}
-
-		if account, ok := event.Node["recipient"]; ok {
-			sut.Require().Equal(e.RecipientID, account[0].ID)
-
-			transfers := event.Transfers[e.RecipientID]
-			sut.Require().Equal(e.RecipientID, transfers[0].Account.ID)
-
-			validateAmount(sut, &transfers[0].Amounts[0], int(exp), e.Amount, e.AmountText, currency)
-		}
 	}
 }
 
@@ -202,10 +231,10 @@ func validateAmount(sut *suite.Suite, amount *structs.TransactionAmount, exp int
 	sut.Require().EqualValues(exp, amount.Exp)
 }
 
-func GetTransactionsResponses(height [2]uint64) []TransactionsResp {
+func GetTransactionsResponses(height [2]uint64) [][]TransactionsResp {
 	now := time.Now()
 
-	return []TransactionsResp{{
+	return [][]TransactionsResp{{{
 		Index:     1,
 		Args:      "",
 		Fee:       "1000",
@@ -220,7 +249,7 @@ func GetTransactionsResponses(height [2]uint64) []TransactionsResp {
 
 		FeeAmount:    "1001",
 		FeeAmountTxt: "0.000000001001DOT",
-	}, {
+	}}, {{
 		Index:     1,
 		Args:      "",
 		Fee:       "156000000",
@@ -235,7 +264,7 @@ func GetTransactionsResponses(height [2]uint64) []TransactionsResp {
 
 		FeeAmount:    "156000000",
 		FeeAmountTxt: "0.000156DOT",
-	}}
+	}}}
 }
 
 func GetBlocksResponses(height [2]uint64) []BlockResp {
@@ -251,19 +280,8 @@ func GetBlocksResponses(height [2]uint64) []BlockResp {
 	}}
 }
 
-func GetEventsResponses(height [2]uint64) [][]EventsResp {
-	return [][]EventsResp{{{
-		Index:          0,
-		ExtrinsicIndex: 0,
-		Description:    "[ An extrinsic completed successfully.]",
-		Method:         "ExtrinsicSuccess",
-		Phase:          "applyExtrinsic",
-		Section:        "system",
-		EventData: []EventData{{
-			Name:  "DispatchInfo",
-			Value: "{\"weight\":161397000,\"class\":\"Mandatory\",\"paysFee\":\"Yes\"}",
-		}},
-	}, {
+func GetEventsResponses(height [2]uint64) [][][]EventsResp {
+	return [][][]EventsResp{{{{
 		Index:          1,
 		ExtrinsicIndex: 1,
 		Description:    "[ A new \\[account\\] was created.]",
@@ -345,7 +363,7 @@ func GetEventsResponses(height [2]uint64) [][]EventsResp {
 			Name:  "DispatchInfo",
 			Value: "{\"weight\":189060000,\"class\":\"Normal\",\"paysFee\":\"Yes\"}",
 		}},
-	}}, {{
+	}}}, {{{
 		Index:          0,
 		ExtrinsicIndex: 0,
 		Description:    "[ An extrinsic completed successfully. \\[info\\]]",
@@ -374,7 +392,7 @@ func GetEventsResponses(height [2]uint64) [][]EventsResp {
 		AccountsID: []string{"14DzyWx1Xq7ZqEjXMWJp6jRUq34hAXJHuj8wts3kRvikEvo5"},
 		Amount:     "10000000",
 		AmountText: "0.00001DOT",
-	}}}
+	}}}}
 }
 
 func GetMetaResponses(height [2]uint64) []MetaResp {

@@ -6,21 +6,47 @@ import (
 	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/utils"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
-func TestBlockMapper_OK(t *testing.T) {
-	var height uint64 = 120
-	var numberOfTransactions uint64 = 3
-	var chainID string = "Polkadot"
+type BlockMapperTest struct {
+	suite.Suite
 
-	blockRes := utils.GetBlocksResponses([2]uint64{height, 4576})
+	ChainID              string
+	Height               uint64
+	NumberOfTransactions uint64
 
-	block := mapper.BlockMapper(utils.BlockResponse(blockRes[0]), chainID, numberOfTransactions)
+	BlockResponse []utils.BlockResp
+}
 
-	require.Equal(t, chainID, block.ChainID)
-	require.Equal(t, blockRes[0].Hash, block.Hash)
-	require.EqualValues(t, height, block.Height)
-	require.Equal(t, numberOfTransactions, block.NumberOfTransactions)
-	require.Equal(t, blockRes[0].Time.Seconds, block.Time.Unix())
+func (t *BlockMapperTest) SetupTest() {
+	t.Height = 120
+	t.NumberOfTransactions = 3
+	t.ChainID = "Polkadot"
+
+	t.BlockResponse = utils.GetBlocksResponses([2]uint64{t.Height, 4576})
+}
+
+func (t *BlockMapperTest) TestBlockMapper_OK() {
+	block, err := mapper.BlockMapper(utils.BlockResponse(t.BlockResponse[0], nil, nil), t.ChainID, t.NumberOfTransactions)
+
+	t.Require().Nil(err)
+
+	t.Require().Equal(t.ChainID, block.ChainID)
+	t.Require().Equal(t.BlockResponse[0].Hash, block.Hash)
+	t.Require().EqualValues(t.Height, block.Height)
+	t.Require().Equal(t.NumberOfTransactions, block.NumberOfTransactions)
+	t.Require().Equal(t.BlockResponse[0].Time.Seconds, block.Time.Unix())
+}
+
+func (t *BlockMapperTest) TestBlockMapper_Error() {
+	block, err := mapper.BlockMapper(nil, t.ChainID, t.NumberOfTransactions)
+
+	t.Require().Nil(block)
+	t.Require().NotNil(err)
+	t.Require().Contains(err.Error(), "Empty block response")
+}
+
+func TestBlockMapper(t *testing.T) {
+	suite.Run(t, new(BlockMapperTest))
 }

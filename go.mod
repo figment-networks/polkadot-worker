@@ -4,7 +4,7 @@ go 1.16
 
 require (
 	github.com/bearcherian/rollzap v1.0.2
-	github.com/figment-networks/indexer-manager v0.1.2
+	github.com/figment-networks/indexer-manager v0.1.3
 	github.com/figment-networks/indexing-engine v0.2.1
 	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210324142620-73fc3b93af31
 	github.com/google/uuid v1.2.0
