@@ -456,7 +456,7 @@ RANGE_LOOP:
 		// (lukanus): add timeout
 		case o := <-chOut:
 			if o.Last {
-				logger.Debug("[COSMOS-CLIENT] Finished sending height", zap.Uint64("height", o.Height))
+				logger.Debug("[CLIENT] Finished sending height", zap.Uint64("height", o.Height))
 				break RANGE_LOOP
 			}
 
@@ -469,7 +469,7 @@ RANGE_LOOP:
 					errored <- true // (lukanus): to close publisher and asyncBlockAndTx
 					err = resp.Error
 					out <- resp
-					break RANGE_LOOP
+					break INNER_LOOP
 				default:
 					out <- resp
 				}
@@ -579,11 +579,7 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 		return mapper.BlockMapper(blResp, c.chainID, 0), nil, nil
 	}
 
-	block = mapper.BlockMapper(
-		blResp,
-		c.chainID,
-		uint64(len(trResp.Transactions)),
-	)
+	block = mapper.BlockMapper(blResp, c.chainID, uint64(len(trResp.Transactions)))
 
 	evResp, err := c.proxy.GetEventsByHeight(ctx, height)
 	if err != nil {
