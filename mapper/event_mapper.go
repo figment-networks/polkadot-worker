@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
@@ -16,17 +17,14 @@ import (
 
 var descRegexp = regexp.MustCompile(`\\\[[a-z_, ]*\\\]`)
 
-func parseEvents(log *zap.Logger, eventRes *eventpb.GetByHeightResponse, currency string, divider *big.Float, exp int) (eventMap, error) {
+func parseEvents(log *zap.Logger, rawEvents []*eventpb.Event, currency string, divider *big.Float, exp int, nonce string, time *time.Time) ([]structs.TransactionEvent, error) {
 	evIndexMap := make(map[int64]struct{})
 
-	events := make(map[int64][]structs.TransactionEvent)
-	for _, e := range eventRes.Events {
+	events := make([]structs.TransactionEvent, 0, len(rawEvents))
+
+	for _, e := range rawEvents {
 		if !isEventUnique(evIndexMap, e.Index) {
 			continue
-		}
-
-		if _, ok := events[e.ExtrinsicIndex]; !ok {
-			events[e.ExtrinsicIndex] = make([]structs.TransactionEvent, 0)
 		}
 
 		event, err := getEvent(log, e, currency, exp, divider)
@@ -43,11 +41,28 @@ func parseEvents(log *zap.Logger, eventRes *eventpb.GetByHeightResponse, currenc
 			transactionEvent.Kind = "error"
 		}
 
-		events[e.ExtrinsicIndex] = append(events[e.ExtrinsicIndex], transactionEvent)
+		transactionEvent.Sub = subWithNonceAndTime(&transactionEvent.Sub, nonce, time)
+		events = append(events, transactionEvent)
 
 	}
 
 	return events, nil
+}
+
+func subWithNonceAndTime(subs *[]structs.SubsetEvent, nonce string, time *time.Time) []structs.SubsetEvent {
+	events := make([]structs.SubsetEvent, len(*subs))
+
+	for i, sub := range *subs {
+		event := sub
+
+		event.Completion = time
+		event.Nonce = nonce
+		event.Sub = subWithNonceAndTime(&event.Sub, nonce, time)
+
+		events[i] = event
+	}
+
+	return events
 }
 
 func isEventUnique(evIndexMap map[int64]struct{}, evIdx int64) bool {

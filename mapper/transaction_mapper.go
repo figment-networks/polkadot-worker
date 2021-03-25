@@ -11,7 +11,6 @@ import (
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
-	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
 	"github.com/pkg/errors"
@@ -44,24 +43,16 @@ func NewTransactionMapper(exp int, chainID, currency string) *TransactionMapper 
 }
 
 // TransactionsMapper maps Block and Transactions response into database Transcations struct
-func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockpb.GetByHeightResponse, eventRes *eventpb.GetByHeightResponse,
-	metaRes *chainpb.GetMetaByHeightResponse, transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
+func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockpb.GetByHeightResponse, metaRes *chainpb.GetMetaByHeightResponse,
+	transactionRes *transactionpb.GetByHeightResponse) ([]*structs.Transaction, error) {
 	var transactions []*structs.Transaction
 	transactionMap := make(map[string]struct{})
 
 	timer := metrics.NewTimer(transactionConversionDuration)
 	defer timer.ObserveDuration()
 
-	if blockRes == nil || eventRes == nil || metaRes == nil || transactionRes == nil {
+	if blockRes == nil || metaRes == nil || transactionRes == nil {
 		return nil, errors.New("One of required proxy response is missing")
-	}
-
-	var allEvents eventMap
-	var err error
-	if transactionRes != nil && len(transactionRes.Transactions) != 0 {
-		if allEvents, err = parseEvents(log, eventRes, m.currency, m.div, m.exp); err != nil {
-			return nil, err
-		}
 	}
 
 	for _, t := range transactionRes.Transactions {
@@ -70,6 +61,11 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockp
 		}
 
 		time, err := parseTime(t.Time)
+		if err != nil {
+			return nil, err
+		}
+
+		events, err := parseEvents(log, t.GetEvents(), m.currency, m.div, m.exp, strconv.FormatUint(uint64(t.Nonce), 10), time)
 		if err != nil {
 			return nil, err
 		}
@@ -88,7 +84,7 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockp
 			Time:      *time,
 			Fee:       fee,
 			Version:   chain_version,
-			Events:    allEvents.getEventsByTrIndex(t.ExtrinsicIndex, strconv.FormatUint(uint64(t.Nonce), 10), t.Hash, time),
+			Events:    events,
 			HasErrors: !t.IsSuccess,
 			Raw:       []byte(t.Raw),
 		})
@@ -173,43 +169,6 @@ func (m *TransactionMapper) getTransactionFee(partialFeeStr, tipStr string) ([]s
 		Numeric:  amount,
 		Exp:      int32(m.exp),
 	}}, nil
-}
-
-type eventMap map[int64][]structs.TransactionEvent
-
-func (e eventMap) getEventsByTrIndex(index int64, nonce, trHash string, time *time.Time) []structs.TransactionEvent {
-	evts, ok := e[index]
-	if !ok {
-		return nil
-	}
-
-	events := make([]structs.TransactionEvent, len(evts))
-
-	for i, evt := range evts {
-		event := evt
-
-		event.Sub = subWithNonceAndTime(&event.Sub, nonce, time)
-
-		events[i] = event
-	}
-
-	return events
-}
-
-func subWithNonceAndTime(subs *[]structs.SubsetEvent, nonce string, time *time.Time) []structs.SubsetEvent {
-	events := make([]structs.SubsetEvent, len(*subs))
-
-	for i, sub := range *subs {
-		event := sub
-
-		event.Completion = time
-		event.Nonce = nonce
-		event.Sub = subWithNonceAndTime(&event.Sub, nonce, time)
-
-		events[i] = event
-	}
-
-	return events
 }
 
 func countCurrencyAmount(exp int, value string, divider *big.Float) (*big.Float, error) {
