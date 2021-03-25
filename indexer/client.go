@@ -19,6 +19,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const page = 100
+
 var (
 	// ErrBadRequest is returned when cannot unmarshal message
 	ErrBadRequest = errors.New("bad request")
@@ -78,7 +80,7 @@ func (c *Client) RegisterStream(ctx context.Context, stream *cStructs.StreamAcce
 	return nil
 }
 
-// CloseStream cloes connection with indexer-manager
+// CloseStream closes connection with indexer-manager
 func (c *Client) CloseStream(ctx context.Context, streamID uuid.UUID) error {
 	c.sLock.Lock()
 	defer c.sLock.Unlock()
@@ -153,8 +155,8 @@ func (c *Client) GetAccountBalance(ctx context.Context, tr cStructs.TaskRequest,
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	out := make(chan cStructs.OutResp, 1)
-	fin := make(chan bool, 1)
+	out := make(chan cStructs.OutResp, 2)
+	fin := make(chan bool, 2)
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
@@ -169,6 +171,8 @@ func (c *Client) GetAccountBalance(ctx context.Context, tr cStructs.TaskRequest,
 		close(out)
 		return
 	}
+
+	close(out)
 
 	for {
 		select {
@@ -197,7 +201,6 @@ func (c *Client) sendAccountBalance(ctx context.Context, account string, height 
 		Type:    "AccountBalance",
 		Payload: *balanceSummary,
 	}
-	close(out)
 
 	return nil
 }
@@ -228,22 +231,22 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	out := make(chan cStructs.OutResp, 3)
+	out := make(chan cStructs.OutResp, page*2+1)
 	fin := make(chan bool, 2)
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
-	block, err := c.proxy.GetBlockByHeight(ctx, 0)
+	head, err := c.proxy.GetHead(ctx)
 	if err != nil {
 		stream.Send(cStructs.TaskResponse{
 			Id:    tr.Id,
-			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch latest block from proxy: %s", err.Error())},
+			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch head from proxy: %s", err.Error())},
 			Final: true,
 		})
 		return
 	}
 
-	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, uint64(block.Block.Header.Height))
+	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, uint64(head.GetHeight()))
 
 	if err := sendTransactionsInRange(ctx, c.log, c, hr, out); err != nil {
 		stream.Send(cStructs.TaskResponse{
@@ -333,8 +336,8 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	out := make(chan cStructs.OutResp, hr.EndHeight-hr.StartHeight+1)
-	fin := make(chan bool, 1)
+	out := make(chan cStructs.OutResp, page*2+1)
+	fin := make(chan bool, 2)
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
@@ -376,7 +379,7 @@ SendLoop:
 			ctxDone = true
 			break SendLoop
 		case t, ok := <-in:
-			if !ok && t.Type == "" {
+			if !ok {
 				break SendLoop
 			}
 
@@ -451,7 +454,7 @@ RANGE_LOOP:
 		// (lukanus): add timeout
 		case o := <-chOut:
 			if o.Last {
-				logger.Debug("[COSMOS-CLIENT] Finished sending height", zap.Uint64("height", o.Height))
+				logger.Debug("[CLIENT] Finished sending height", zap.Uint64("height", o.Height))
 				break RANGE_LOOP
 			}
 
@@ -464,7 +467,7 @@ RANGE_LOOP:
 					errored <- true // (lukanus): to close publisher and asyncBlockAndTx
 					err = resp.Error
 					out <- resp
-					break RANGE_LOOP
+					break INNER_LOOP
 				default:
 					out <- resp
 				}
@@ -574,11 +577,7 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 		return mapper.BlockMapper(blResp, c.chainID, 0), nil, nil
 	}
 
-	block = mapper.BlockMapper(
-		blResp,
-		c.chainID,
-		uint64(len(trResp.Transactions)),
-	)
+	block = mapper.BlockMapper(blResp, c.chainID, uint64(len(trResp.Transactions)))
 
 	evResp, err := c.proxy.GetEventsByHeight(ctx, height)
 	if err != nil {
@@ -592,76 +591,6 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 
 	if transactions, err = c.trMapper.TransactionsMapper(c.log, blResp, evResp, metaResp, trResp); err != nil {
 		return nil, nil, err
-	}
-
-	return
-}
-
-func (c *Client) sendTransactionsByHeight(ctx context.Context, out chan cStructs.OutResp, height uint64, wg *sync.WaitGroup, err chan error) {
-	if transactions := c.getTransactions(ctx, out, height, err); transactions != nil {
-		for _, transaction := range transactions {
-			t := *transaction
-			out <- cStructs.OutResp{
-				Type:    "Transaction",
-				Payload: t,
-			}
-		}
-	}
-	if wg != nil {
-		wg.Done()
-	}
-}
-
-func (c *Client) getTransactions(ctx context.Context, out chan cStructs.OutResp, height uint64, err chan error) (transactionMapped []*structs.Transaction) {
-	block, e := c.proxy.GetBlockByHeight(ctx, height)
-	if e != nil {
-		err <- e
-		ctx.Done()
-		return nil
-	}
-
-	transactions, e := c.proxy.GetTransactionsByHeight(ctx, height)
-	if e != nil {
-		err <- e
-		ctx.Done()
-		return nil
-	}
-
-	if transactions == nil {
-		out <- cStructs.OutResp{
-			Type:    "Block",
-			Payload: mapper.BlockMapper(block, c.chainID, 0),
-		}
-		return nil
-	}
-
-	out <- cStructs.OutResp{
-		Type: "Block",
-		Payload: mapper.BlockMapper(
-			block,
-			c.chainID,
-			uint64(len(transactions.Transactions)),
-		),
-	}
-
-	events, e := c.proxy.GetEventsByHeight(ctx, height)
-	if e != nil {
-		err <- e
-		ctx.Done()
-		return nil
-	}
-
-	meta, e := c.proxy.GetMetaByHeight(ctx, height)
-	if e != nil {
-		err <- e
-		ctx.Done()
-		return nil
-	}
-
-	if transactionMapped, e = c.trMapper.TransactionsMapper(c.log, block, events, meta, transactions); e != nil {
-		err <- e
-		ctx.Done()
-		return nil
 	}
 
 	return

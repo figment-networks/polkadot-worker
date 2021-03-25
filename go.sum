@@ -95,8 +95,8 @@ github.com/figment-networks/indexer-manager v0.1.2 h1:xhl61PvdIItBLjoGs7pCldtS0Z
 github.com/figment-networks/indexer-manager v0.1.2/go.mod h1:98qZshG+/SFvub//aA4coYT+2G6dY9ZVdVsOug7qtqU=
 github.com/figment-networks/indexing-engine v0.2.1 h1:P4i+z8jzTiqso+UAPfXQ2fQ4TZlO6rDgqZyLd4/wyc4=
 github.com/figment-networks/indexing-engine v0.2.1/go.mod h1:PxX1SoEGUoCkno1I3aDj1tynP1ySQomEkuzOZFIVHkI=
-github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210312124349-b58ade405405 h1:r84Y3onXnqMqig0a1TFB/LcTBxqWo5cRojZlLnlDi1U=
-github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210312124349-b58ade405405/go.mod h1:Uf48ek6W9HhZw6QIrW7HEfgGUanK+kbUTeCBZaB8/NM=
+github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210324142620-73fc3b93af31 h1:kK2HNzOMawodTpL1CiFNsYH+Cj1RMd3LrPq15HR7GJY=
+github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210324142620-73fc3b93af31/go.mod h1:Uf48ek6W9HhZw6QIrW7HEfgGUanK+kbUTeCBZaB8/NM=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/fsouza/fake-gcs-server v1.17.0/go.mod h1:D1rTE4YCyHFNa99oyJJ5HyclvN/0uQR+pM/VdlL83bw=
 github.com/go-gl/glfw v0.0.0-20190409004039-e6da0acd62b1/go.mod h1:vR7hzQXu2zJy9AVAgeJqvqgH9Q5CA+iKCZ2gyEVpxRU=

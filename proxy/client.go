@@ -21,6 +21,7 @@ type ClientIface interface {
 	GetAccountBalance(ctx context.Context, account string, height uint64) (*accountpb.GetByHeightResponse, error)
 	GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error)
 	GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.GetMetaByHeightResponse, error)
+	GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error)
 	GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error)
 	GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error)
 }
@@ -131,6 +132,24 @@ func (c *Client) GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.G
 	}
 
 	rawRequestGRPCDuration.WithLabels("GetMetaByHeight", "OK").Observe(time.Since(now).Seconds())
+
+	return res, err
+}
+
+// GetHead returns Chain meta by height
+func (c *Client) GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error) {
+	c.log.Debug("Sending GetHead")
+
+	now := time.Now()
+
+	res, err := c.chainClient.GetHead(ctx, &chainpb.GetHeadRequest{})
+	if err != nil {
+		err = errors.Wrapf(err, "Error while getting head")
+		rawRequestGRPCDuration.WithLabels("GetHead", err.Error()).Observe(time.Since(now).Seconds())
+		return nil, err
+	}
+
+	rawRequestGRPCDuration.WithLabels("GetHead", "OK").Observe(time.Since(now).Seconds())
 
 	return res, err
 }

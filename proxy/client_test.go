@@ -292,12 +292,17 @@ type transactionClientMock struct {
 	mock.Mock
 }
 
+func (m transactionClientMock) GetAnnotatedByHeight(ctx context.Context, in *transactionpb.GetAnnotatedByHeightRequest, opts ...grpc.CallOption) (*transactionpb.GetAnnotatedByHeightResponse, error) {
+	args := m.Called(ctx, in, opts)
+	return args.Get(0).(*transactionpb.GetAnnotatedByHeightResponse), args.Error(1)
+}
+
 func (m transactionClientMock) GetByHeight(ctx context.Context, in *transactionpb.GetByHeightRequest, opts ...grpc.CallOption) (*transactionpb.GetByHeightResponse, error) {
 	args := m.Called(ctx, in, opts)
 	return args.Get(0).(*transactionpb.GetByHeightResponse), args.Error(1)
 }
 
-func (m transactionClientMock) GetAnnotatedByHeight(ctx context.Context, in *transactionpb.GetAnnotatedByHeightRequest, opts ...grpc.CallOption) (*transactionpb.GetAnnotatedByHeightResponse, error) {
-	args := m.Called(ctx, in, opts)
-	return args.Get(0).(*transactionpb.GetAnnotatedByHeightResponse), args.Error(1)
+func (m transactionClientMock) GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(*chainpb.GetHeadResponse), args.Error(1)
 }

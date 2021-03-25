@@ -41,6 +41,8 @@ type IndexerClientTest struct {
 	Currency    string
 	Exp         int
 	Version     string
+	Ctx         context.Context
+	CtxCancel   context.CancelFunc
 	ProxyClient *proxyClientMock
 }
 
@@ -64,6 +66,10 @@ func (ic *IndexerClientTest) SetupTest() {
 	ic.Require().Nil(err)
 
 	proxyClientMock := proxyClientMock{}
+
+	ctx, ctxCancel := context.WithCancel(context.Background())
+	ic.Ctx = ctx
+	ic.CtxCancel = ctxCancel
 
 	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency)
 	ic.ProxyClient = &proxyClientMock
@@ -102,10 +108,11 @@ func (ic *IndexerClientTest) TestGetAccountBalance_OK() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.Require().Nil(ic.CloseStream(context.Background(), stream.StreamID))
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	accountBalance, endFounded := false, false
 	for s := range stream.ResponseListener {
@@ -166,10 +173,11 @@ func (ic *IndexerClientTest) TestGetAccountBalance_ProxyError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.Require().Nil(ic.CloseStream(context.Background(), stream.StreamID))
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -215,10 +223,11 @@ func (ic *IndexerClientTest) TestGetAccountBalance_MapperError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.Require().Nil(ic.CloseStream(context.Background(), stream.StreamID))
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -241,10 +250,11 @@ func (ic *IndexerClientTest) TestGetAccountBalance_UnmarshalError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -258,7 +268,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_UnmarshalError() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_OK() {
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[1]), nil)
+	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(utils.HeadResponse(int64(ic.Height[1])), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.BlockResponse(ic.BlockResponse[1]), nil)
 	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.EventsResponse(ic.EventsResponse[0]), nil)
@@ -286,10 +296,11 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.Require().Nil(ic.CloseStream(context.Background(), stream.StreamID))
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	countBlock, countTransaction, endFounded := 0, 0, false
 	for s := range stream.ResponseListener {
@@ -351,10 +362,11 @@ func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -367,9 +379,9 @@ func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
 	}
 }
 
-func (ic *IndexerClientTest) TestGetLatest_BlockResponseError() {
-	e := errors.New("new block error")
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(&blockpb.GetByHeightResponse{}, e)
+func (ic *IndexerClientTest) TestGetLatest_HeadResponseError() {
+	e := errors.New("new head error")
+	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(&chainpb.GetHeadResponse{}, e)
 
 	req := structs.LatestDataRequest{
 		LastHeight: uint64(ic.Height[0]),
@@ -389,10 +401,11 @@ func (ic *IndexerClientTest) TestGetLatest_BlockResponseError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -400,13 +413,13 @@ func (ic *IndexerClientTest) TestGetLatest_BlockResponseError() {
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Could not fetch latest block from proxy: new block error")
+		ic.Require().Contains(response.Error.Msg, "Could not fetch head from proxy: new head error")
 		return
 	}
 }
 
 func (ic *IndexerClientTest) TestGetLatest_BlockResponseError2() {
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(utils.HeadResponse(int64(ic.Height[0])), nil)
 
 	e := errors.New("new block error")
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(&blockpb.GetByHeightResponse{}, e)
@@ -429,10 +442,11 @@ func (ic *IndexerClientTest) TestGetLatest_BlockResponseError2() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -446,7 +460,7 @@ func (ic *IndexerClientTest) TestGetLatest_BlockResponseError2() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_TransactionResponseError() {
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(utils.HeadResponse(int64(ic.Height[0])), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 
 	e := errors.New("new transaction error")
@@ -470,10 +484,11 @@ func (ic *IndexerClientTest) TestGetLatest_TransactionResponseError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -487,7 +502,7 @@ func (ic *IndexerClientTest) TestGetLatest_TransactionResponseError() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_EventResponseError() {
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(utils.HeadResponse(int64(ic.Height[0])), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
 
@@ -512,10 +527,11 @@ func (ic *IndexerClientTest) TestGetLatest_EventResponseError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -529,7 +545,7 @@ func (ic *IndexerClientTest) TestGetLatest_EventResponseError() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_MetaResponseError() {
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), uint64(0)).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
+	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(utils.HeadResponse(int64(ic.Height[0])), nil)
 	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.BlockResponse[0]), nil)
 	ic.ProxyClient.On("GetEventsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.EventsResponse(ic.EventsResponse[0]), nil)
 	ic.ProxyClient.On("GetTransactionsByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.TransactionsResponse(ic.TransactionsResponse[0]), nil)
@@ -555,10 +571,11 @@ func (ic *IndexerClientTest) TestGetLatest_MetaResponseError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -600,10 +617,11 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	countBlock, countTransaction, endFounded := 0, 0, false
 	for s := range stream.ResponseListener {
@@ -666,10 +684,11 @@ func (ic *IndexerClientTest) TestGetTransactions_HeightRangeUnmarshalError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -713,10 +732,11 @@ func (ic *IndexerClientTest) TestGetTransactions_GetBlockByHeightError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -759,10 +779,11 @@ func (ic *IndexerClientTest) TestGetTransactions_GetTransactionByHeightError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -809,17 +830,18 @@ func (ic *IndexerClientTest) TestGetTransactions_GetEventByHeightError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
 			continue
 		}
 
-		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: new event error one")
+		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: new event error")
 		return
 	}
 }
@@ -851,10 +873,11 @@ func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	ic.Require().Nil(ic.RegisterStream(context.Background(), stream))
-	defer ic.CloseStream(context.Background(), stream.StreamID)
+	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
+	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
+	defer ic.CtxCancel()
 
-	stream.RequestListener <- tr
+	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
 		if response.Id != ic.ReqID || response.Error.Msg == "" {
@@ -899,6 +922,11 @@ func (m proxyClientMock) GetEventsByHeight(ctx context.Context, height uint64) (
 func (m proxyClientMock) GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.GetMetaByHeightResponse, error) {
 	args := m.Called(ctx, height)
 	return args.Get(0).(*chainpb.GetMetaByHeightResponse), args.Error(1)
+}
+
+func (m proxyClientMock) GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(*chainpb.GetHeadResponse), args.Error(1)
 }
 
 func (m proxyClientMock) GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error) {

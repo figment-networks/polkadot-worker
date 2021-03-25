@@ -7,7 +7,7 @@ var (
 		Namespace: "indexerworker",
 		Subsystem: "api",
 		Name:      "request_http",
-		Desc:      "Duration how long it takes to take data from cosmos",
+		Desc:      "Duration how long it takes to take data from polkadot",
 		Tags:      []string{"endpoint", "status"},
 	})
 
@@ -15,7 +15,7 @@ var (
 		Namespace: "indexerworker",
 		Subsystem: "api",
 		Name:      "request_grpc",
-		Desc:      "Duration how long it takes to take data from cosmos",
+		Desc:      "Duration how long it takes to take data from polkadot",
 		Tags:      []string{"endpoint", "status"},
 	})
 
