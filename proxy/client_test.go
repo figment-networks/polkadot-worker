@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/figment-networks/polkadot-worker/proxy"
+	"golang.org/x/time/rate"
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
@@ -40,9 +41,11 @@ func (bc *BlockClientTest) SetupTest() {
 	chainClientMock := chainClientMock{}
 	eventClientMock := eventClientMock{}
 	transactionClientMock := transactionClientMock{}
+	rateLimiter := rate.NewLimiter(rate.Limit(100), 100)
 
 	bc.Client = proxy.NewClient(
 		logger,
+		rateLimiter,
 		&accountClientMock,
 		&blockClientMock,
 		&chainClientMock,
@@ -70,6 +73,18 @@ func (bc *BlockClientTest) TestGetBlockByHeight_OK() {
 			Header: &blockpb.Header{
 				Height: height,
 			},
+			Extrinsics: []*transactionpb.Transaction{
+				{
+					ExtrinsicIndex: 2,
+					Hash:           "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf",
+					Events: []*eventpb.Event{
+						{
+							Index:          1,
+							ExtrinsicIndex: 2,
+						},
+					},
+				},
+			},
 		},
 	}
 
@@ -82,6 +97,16 @@ func (bc *BlockClientTest) TestGetBlockByHeight_OK() {
 	bc.Require().NotNil(response)
 	bc.Require().Equal(res.Block.BlockHash, response.Block.BlockHash)
 	bc.Require().EqualValues(height, response.Block.Header.Height)
+
+	transactions := response.Block.Extrinsics
+	bc.Require().Len(transactions, 1)
+	bc.Require().Equal(transactions[0].ExtrinsicIndex, response.Block.Extrinsics[0].ExtrinsicIndex)
+	bc.Require().Equal(transactions[0].Hash, response.Block.Extrinsics[0].Hash)
+
+	events := transactions[0].Events
+	bc.Require().Len(events, 1)
+	bc.Require().Equal(events[0].Index, res.Block.Extrinsics[0].Events[0].Index)
+	bc.Require().Equal(events[0].ExtrinsicIndex, res.Block.Extrinsics[0].Events[0].ExtrinsicIndex)
 }
 
 func (bc *BlockClientTest) TestGetBlockByHeight_Error() {
@@ -199,6 +224,12 @@ func (bc *BlockClientTest) TestGetTransactionByHeight_OK() {
 			{
 				ExtrinsicIndex: 2,
 				Hash:           "0x2326841a64e0a3fff2b4bb760d316cc74b33a8a9480a28ab7e7885acba85e3cf",
+				Events: []*eventpb.Event{
+					{
+						Index:          1,
+						ExtrinsicIndex: 2,
+					},
+				},
 			},
 		},
 	}
@@ -212,6 +243,11 @@ func (bc *BlockClientTest) TestGetTransactionByHeight_OK() {
 	bc.Require().Len(response.Transactions, 1)
 	bc.Require().Equal(res.Transactions[0].ExtrinsicIndex, response.Transactions[0].ExtrinsicIndex)
 	bc.Require().Equal(res.Transactions[0].Hash, response.Transactions[0].Hash)
+
+	events := response.Transactions[0].Events
+	bc.Require().Len(events, 1)
+	bc.Require().Equal(events[0].Index, res.Transactions[0].Events[0].Index)
+	bc.Require().Equal(events[0].ExtrinsicIndex, res.Transactions[0].Events[0].ExtrinsicIndex)
 }
 
 func (bc *BlockClientTest) TestGetTransactionByHeight_Error() {
