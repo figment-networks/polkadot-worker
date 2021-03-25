@@ -6,7 +6,7 @@ require (
 	github.com/bearcherian/rollzap v1.0.2
 	github.com/figment-networks/indexer-manager v0.1.2
 	github.com/figment-networks/indexing-engine v0.2.1
-	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210312124349-b58ade405405
+	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210324142620-73fc3b93af31
 	github.com/google/uuid v1.2.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/pkg/errors v0.9.1
