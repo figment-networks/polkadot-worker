@@ -68,36 +68,10 @@ func (tm *TransactionMapperTest) SetupTest() {
 	tm.TransactionMapper = mapper.NewTransactionMapper(tm.Exp, tm.ChainID, tm.Currency)
 }
 
-func (tm *TransactionMapperTest) TestTransactionMapper_EmptyResponse() {
-	transactions, err := tm.TransactionsMapper(tm.Log, nil, tm.EventsResponse, tm.MetaResponse, tm.TransactionsResponse)
-
-	tm.Require().Nil(transactions)
-	tm.Require().NotNil(err)
-	tm.Require().Contains("One of required proxy response is missing", err.Error())
-
-	transactions, err = tm.TransactionsMapper(tm.Log, tm.BlockResponse, nil, tm.MetaResponse, tm.TransactionsResponse)
-
-	tm.Require().Nil(transactions)
-	tm.Require().NotNil(err)
-	tm.Require().Contains("One of required proxy response is missing", err.Error())
-
-	transactions, err = tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, nil, tm.TransactionsResponse)
-
-	tm.Require().Nil(transactions)
-	tm.Require().NotNil(err)
-	tm.Require().Contains("One of required proxy response is missing", err.Error())
-
-	transactions, err = tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.MetaResponse, nil)
-
-	tm.Require().Nil(transactions)
-	tm.Require().NotNil(err)
-	tm.Require().Contains("One of required proxy response is missing", err.Error())
-}
-
 func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
 	tm.TransactionsResponse.Transactions[0].Time = "[object Object]"
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.MetaResponse, tm.TransactionsResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.MetaResponse)
 
 	tm.Require().Nil(transactions)
 
@@ -108,7 +82,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
 func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() {
 	tm.TransactionsResponse.Transactions[0].PartialFee = "bad"
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.MetaResponse, tm.TransactionsResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.MetaResponse)
 
 	tm.Require().Nil(transactions)
 
@@ -119,7 +93,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() 
 func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
 	tm.TransactionsResponse.Transactions[0].Tip = "bad"
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.MetaResponse, tm.TransactionsResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.MetaResponse)
 
 	tm.Require().Nil(transactions)
 
@@ -128,7 +102,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.EventsResponse, tm.MetaResponse, tm.TransactionsResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.MetaResponse)
 
 	tm.Require().Nil(err)
 

@@ -568,23 +568,21 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 		return nil, nil, err
 	}
 
-	trResp, err := c.proxy.GetTransactionsByHeight(ctx, height)
-	if err != nil {
+	numberOfTransactions := uint64(len(blResp.Block.Extrinsics))
+	if block, err = mapper.BlockMapper(blResp, c.chainID, numberOfTransactions); err != nil {
 		return nil, nil, err
 	}
 
-	if trResp == nil {
-		return mapper.BlockMapper(blResp, c.chainID, 0), nil, nil
+	if numberOfTransactions == 0 {
+		return block, nil, nil
 	}
-
-	block = mapper.BlockMapper(blResp, c.chainID, uint64(len(trResp.Transactions)))
 
 	metaResp, err := c.proxy.GetMetaByHeight(ctx, height)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if transactions, err = c.trMapper.TransactionsMapper(c.log, blResp, metaResp, trResp); err != nil {
+	if transactions, err = c.trMapper.TransactionsMapper(c.log, blResp, metaResp); err != nil {
 		return nil, nil, err
 	}
 

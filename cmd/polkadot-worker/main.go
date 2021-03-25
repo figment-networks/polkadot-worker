@@ -14,7 +14,6 @@ import (
 	"github.com/figment-networks/polkadot-worker/cmd/polkadot-worker/logger"
 	"github.com/figment-networks/polkadot-worker/indexer"
 	"github.com/figment-networks/polkadot-worker/proxy"
-	"golang.org/x/time/rate"
 
 	"github.com/figment-networks/indexer-manager/worker/connectivity"
 	grpcIndexer "github.com/figment-networks/indexer-manager/worker/transport/grpc"
@@ -133,11 +132,8 @@ func getConfig(path string) (cfg *config.Config, err error) {
 }
 
 func createIndexerClient(ctx context.Context, log *zap.Logger, cfg *config.Config, conn *grpc.ClientConn) *indexer.Client {
-	rateLimiter := rate.NewLimiter(rate.Limit(cfg.ReqPerSecond), cfg.ReqPerSecond)
-
 	proxyClient := proxy.NewClient(
 		log,
-		rateLimiter,
 		accountpb.NewAccountServiceClient(conn),
 		blockpb.NewBlockServiceClient(conn),
 		chainpb.NewChainServiceClient(conn),

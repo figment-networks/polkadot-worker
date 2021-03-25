@@ -40,9 +40,9 @@ type Client struct {
 }
 
 // NewClient is a polkadot-proxy Client constructor
-func NewClient(log *zap.Logger, rl *rate.Limiter, ac accountpb.AccountServiceClient, bc blockpb.BlockServiceClient,
+func NewClient(log *zap.Logger, ac accountpb.AccountServiceClient, bc blockpb.BlockServiceClient,
 	cc chainpb.ChainServiceClient, ec eventpb.EventServiceClient, tc transactionpb.TransactionServiceClient) *Client {
-	return &Client{log: log, rateLimiter: rl, accountClient: ac, blockClient: bc, chainClient: cc, eventClient: ec, transactionClient: tc}
+	return &Client{log: log, accountClient: ac, blockClient: bc, chainClient: cc, eventClient: ec, transactionClient: tc}
 }
 
 // GetAccountBalance return Account Balance by provided height
