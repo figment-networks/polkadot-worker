@@ -113,7 +113,7 @@ func (c *Client) RegisterStream(ctx context.Context, stream *cStructs.StreamAcce
 	defer c.sLock.Unlock()
 	c.streams[stream.StreamID] = stream
 
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 5; i++ {
 		go c.Run(ctx, stream)
 	}
 

@@ -69,7 +69,7 @@ func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest) 
 
 // GetAccountBalance return Account Balance by provided height
 func (c *Client) GetAccountBalance(ctx context.Context, account string, height uint64) (*accountpb.GetByHeightResponse, error) {
-	c.log.Debug("Sending GetAccountBalanceByHeight height", zap.Uint64("height", height))
+	c.log.Debug("Sending GetAccountBalanceByHeight", zap.Uint64("height", height))
 
 	err := c.rateLimiter.Wait(ctx)
 	if err != nil {
@@ -85,14 +85,17 @@ func (c *Client) GetAccountBalance(ctx context.Context, account string, height u
 		return nil, err
 	}
 
-	rawRequestGRPCDuration.WithLabels("GetAccountBalanceByHeight", "OK").Observe(time.Since(now).Seconds())
+	took := time.Since(now).Seconds()
+	c.log.Debug("Received GetAccountBalanceByHeight", zap.Float64("took", took))
+
+	rawRequestGRPCDuration.WithLabels("GetAccountBalanceByHeight", "OK").Observe(took)
 
 	return res, err
 }
 
 // GetBlockByHeight returns Block by provided height
 func (c *Client) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error) {
-	c.log.Debug("Sending GetBlockByHeight height", zap.Uint64("height", height))
+	c.log.Debug("Sending GetBlockByHeight", zap.Uint64("height", height))
 
 	err := c.rateLimiter.Wait(ctx)
 	if err != nil {
@@ -107,14 +110,17 @@ func (c *Client) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.
 		return nil, err
 	}
 
-	rawRequestGRPCDuration.WithLabels("GetBlockByHeight", "OK").Observe(time.Since(now).Seconds())
+	took := time.Since(now).Seconds()
+	c.log.Debug("Received GetBlockByHeight", zap.Float64("took", took))
+
+	rawRequestGRPCDuration.WithLabels("GetBlockByHeight", "OK").Observe(took)
 
 	return res, err
 }
 
 // GetEventsByHeight returns Event by height
 func (c *Client) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error) {
-	c.log.Debug("Sending GetEventsByHeight height", zap.Uint64("height", height))
+	c.log.Debug("Sending GetEventsByHeight", zap.Uint64("height", height))
 
 	err := c.rateLimiter.Wait(ctx)
 	if err != nil {
@@ -129,14 +135,17 @@ func (c *Client) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb
 		return nil, err
 	}
 
-	rawRequestGRPCDuration.WithLabels("GetEventsByHeight", "OK").Observe(time.Since(now).Seconds())
+	took := time.Since(now).Seconds()
+	c.log.Debug("Received GetEventsByHeight", zap.Float64("took", took))
+
+	rawRequestGRPCDuration.WithLabels("GetEventsByHeight", "OK").Observe(took)
 
 	return res, err
 }
 
 // GetMetaByHeight returns Chain meta by height
 func (c *Client) GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.GetMetaByHeightResponse, error) {
-	c.log.Debug("Sending GetMetaByHeight height", zap.Uint64("height", height))
+	c.log.Debug("Sending GetMetaByHeight", zap.Uint64("height", height))
 
 	err := c.rateLimiter.Wait(ctx)
 	if err != nil {
@@ -152,7 +161,10 @@ func (c *Client) GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.G
 		return nil, err
 	}
 
-	rawRequestGRPCDuration.WithLabels("GetMetaByHeight", "OK").Observe(time.Since(now).Seconds())
+	took := time.Since(now).Seconds()
+	c.log.Debug("Received GetEventsByHeight", zap.Float64("took", took))
+
+	rawRequestGRPCDuration.WithLabels("GetMetaByHeight", "OK").Observe(took)
 
 	return res, err
 }
@@ -170,7 +182,10 @@ func (c *Client) GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error) 
 		return nil, err
 	}
 
-	rawRequestGRPCDuration.WithLabels("GetHead", "OK").Observe(time.Since(now).Seconds())
+	took := time.Since(now).Seconds()
+	c.log.Debug("Received GetEventsByHeight", zap.Float64("took", took))
+
+	rawRequestGRPCDuration.WithLabels("GetHead", "OK").Observe(took)
 
 	return res, err
 }
@@ -186,7 +201,7 @@ func (c *Client) GetTransactionsByHeight(ctx context.Context, height uint64) (*t
 		return nil, err
 	}
 
-	c.log.Debug("Sending GetTransactionsByHeight height", zap.Uint64("height", height))
+	c.log.Debug("Sending GetTransactionsByHeight", zap.Uint64("height", height))
 
 	now := time.Now()
 
@@ -197,7 +212,10 @@ func (c *Client) GetTransactionsByHeight(ctx context.Context, height uint64) (*t
 		return nil, err
 	}
 
-	rawRequestGRPCDuration.WithLabels("GetTransactionsByHeight", "OK").Observe(time.Since(now).Seconds())
+	took := time.Since(now).Seconds()
+	c.log.Debug("Received GetEventsByHeight", zap.Float64("took", took))
+
+	rawRequestGRPCDuration.WithLabels("GetTransactionsByHeight", "OK").Observe(took)
 
 	return res, err
 }

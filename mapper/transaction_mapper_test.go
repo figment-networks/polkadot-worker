@@ -8,7 +8,6 @@ import (
 	"github.com/figment-networks/polkadot-worker/utils"
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
-	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
@@ -28,12 +27,10 @@ type TransactionMapperTest struct {
 
 	Blocks       []utils.BlockResp
 	Events       [][][]utils.EventsResp
-	Metas        []utils.MetaResp
 	Transactions [][]utils.TransactionsResp
 
 	BlockResponse        *blockpb.GetByHeightResponse
 	EventsResponse       *eventpb.GetByHeightResponse
-	MetaResponse         *chainpb.GetMetaByHeightResponse
 	TransactionsResponse *transactionpb.GetByHeightResponse
 
 	Log *zap.Logger
@@ -52,11 +49,9 @@ func (tm *TransactionMapperTest) SetupTest() {
 
 	tm.Blocks = utils.GetBlocksResponses(height)
 	tm.Events = utils.GetEventsResponses(height)
-	tm.Metas = utils.GetMetaResponses(height)
 	tm.Transactions = utils.GetTransactionsResponses(height)
 
 	tm.BlockResponse = utils.BlockResponse(tm.Blocks[0], tm.Transactions[0], tm.Events[0])
-	tm.MetaResponse = utils.MetaResponse(tm.Metas[0])
 
 	log, err := zap.NewDevelopment()
 	tm.Require().Nil(err)
@@ -106,7 +101,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
 
 	tm.Require().Len(transactions, 1)
 
-	utils.ValidateTransactions(&tm.Suite, *transactions[0], tm.Blocks[0], tm.Transactions[0], tm.Events[0][0], tm.Metas[0], tm.ChainID, tm.Currency, int32(tm.Exp))
+	utils.ValidateTransactions(&tm.Suite, *transactions[0], tm.Blocks[0], tm.Transactions[0], tm.Events[0][0], tm.ChainID, tm.Currency, int32(tm.Exp))
 }
 
 func TestTransactionMapper(t *testing.T) {

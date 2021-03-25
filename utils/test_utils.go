@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
@@ -129,6 +128,7 @@ func MetaResponse(resp MetaResp) *chainpb.GetMetaByHeightResponse {
 type TransactionsResp struct {
 	Index     int64
 	Args      string
+	Epoch     string
 	Fee       string
 	Hash      string
 	IsSuccess bool
@@ -161,7 +161,7 @@ func TransactionsResponse(resp TransactionsResp) *transactionpb.GetByHeightRespo
 	}
 }
 
-func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp []TransactionsResp, evResp []EventsResp, mResp MetaResp, chainID, currency string, exp int32) {
+func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bResp BlockResp, trResp []TransactionsResp, evResp []EventsResp, chainID, currency string, exp int32) {
 	sut.Require().Equal(bResp.Hash, transaction.BlockHash)
 	sut.Require().EqualValues(bResp.Height, transaction.Height)
 	sut.Require().EqualValues(bResp.Height, transaction.Height)
@@ -172,14 +172,12 @@ func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bRe
 		sut.Require().Equal(t.Time, strconv.Itoa(int(transaction.Time.Unix())))
 		sut.Require().Equal("0.0.1", transaction.Version)
 		sut.Require().Equal(!t.IsSuccess, transaction.HasErrors)
-		sut.Require().Equal(strings.ToLower(t.Section), transaction.Events[0].Module)
-		sut.Require().Equal([]string{strings.ToLower(t.Method)}, transaction.Events[0].Type)
 
 		validateAmount(sut, &transaction.Fee[0], int(exp), t.FeeAmount, t.FeeAmountTxt, currency)
 
-		sut.Require().Len(transaction.Events[0].Sub, len(evResp))
+		sut.Require().Len(transaction.Events, len(evResp))
 		for i, e := range evResp {
-			sut.Require().Equal(fmt.Sprintf("%d-%d", bResp.Height, e.Index), transaction.Events[0].Sub[i].ID)
+			sut.Require().Equal(strconv.Itoa(int(e.Index)), transaction.Events[i].ID)
 
 			expectedType := strings.ToLower(e.Method)
 			for _, d := range e.EventData {
@@ -188,7 +186,7 @@ func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bRe
 				}
 			}
 
-			event := transaction.Events[0].Sub[i]
+			event := transaction.Events[i].Sub[0]
 			sut.Require().Equal(e.Section, event.Module)
 			sut.Require().Equal([]string{expectedType}, event.Type)
 			sut.Require().Equal(t.Time, strconv.Itoa(int(event.Completion.Unix())))
@@ -240,6 +238,7 @@ func GetTransactionsResponses(height [2]uint64) [][]TransactionsResp {
 	return [][]TransactionsResp{{{
 		Index:     1,
 		Args:      "",
+		Epoch:     "352",
 		Fee:       "1000",
 		Hash:      "0xd922a8a95e1dcf62375026ffd412c28f842854462296695d935c296f5107153f",
 		IsSuccess: true,
@@ -255,6 +254,7 @@ func GetTransactionsResponses(height [2]uint64) [][]TransactionsResp {
 	}}, {{
 		Index:     1,
 		Args:      "",
+		Epoch:     "231",
 		Fee:       "156000000",
 		Hash:      "0xf59d6c5642ddec857fdba05544332340e25a3a73cb1b74c78f3b79bdbed8b6fe",
 		IsSuccess: true,
@@ -396,12 +396,4 @@ func GetEventsResponses(height [2]uint64) [][][]EventsResp {
 		Amount:     "10000000",
 		AmountText: "0.00001DOT",
 	}}}}
-}
-
-func GetMetaResponses(height [2]uint64) []MetaResp {
-	return []MetaResp{{
-		Era: 352,
-	}, {
-		Era: 231,
-	}}
 }
