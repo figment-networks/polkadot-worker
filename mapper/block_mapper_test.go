@@ -28,7 +28,7 @@ func (t *BlockMapperTest) SetupTest() {
 }
 
 func (t *BlockMapperTest) TestBlockMapper_OK() {
-	block, err := mapper.BlockMapper(utils.BlockResponse(t.BlockResponse[0]), t.ChainID, t.NumberOfTransactions)
+	block, err := mapper.BlockMapper(utils.BlockResponse(t.BlockResponse[0], nil, nil), t.ChainID, t.NumberOfTransactions)
 
 	t.Require().Nil(err)
 
@@ -40,11 +40,11 @@ func (t *BlockMapperTest) TestBlockMapper_OK() {
 }
 
 func (t *BlockMapperTest) TestBlockMapper_Error() {
-	block, err := mapper.BlockMapper(utils.BlockResponse(t.BlockResponse[0]), t.ChainID, t.NumberOfTransactions)
+	block, err := mapper.BlockMapper(nil, t.ChainID, t.NumberOfTransactions)
 
 	t.Require().Nil(block)
 	t.Require().NotNil(err)
-	t.Require().Contains(err.Error(), "lala")
+	t.Require().Contains(err.Error(), "Empty block response")
 }
 
 func TestBlockMapper(t *testing.T) {
