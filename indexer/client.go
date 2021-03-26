@@ -571,6 +571,7 @@ func asyncBlockAndTx(ctx context.Context, logger *zap.Logger, wg *sync.WaitGroup
 func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint64) (block *structs.Block, transactions []*structs.Transaction, err error) {
 
 	ch := make(chan api.Response, 10)
+	defer close(ch)
 	c.serverConn.Requests <- api.JsonRPCSend{
 		RespCH: ch,
 		JsonRPCRequest: api.JsonRPCRequest{
@@ -581,7 +582,39 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 	}
 	respA := <-ch
 
-	resp, err := c.proxy.DecodeData(ctx, respA.Result, nil, nil)
+	c.serverConn.Requests <- api.JsonRPCSend{
+		RespCH: ch,
+		JsonRPCRequest: api.JsonRPCRequest{
+			ID:     9,
+			Method: "chain_getBlock",
+			Params: []interface{}{respA.Result},
+		},
+	}
+
+	c.serverConn.Requests <- api.JsonRPCSend{
+		RespCH: ch,
+		JsonRPCRequest: api.JsonRPCRequest{
+			ID:     11,
+			Method: "state_getMetadata",
+			Params: []interface{}{respA.Result},
+		},
+	}
+	var blockRM, _ json.RawMessage
+	var i uint64
+	for res := range ch {
+		i++
+		switch res.Type {
+		case "chain_getBlock":
+			blockRM = res.Result
+		case "state_getMetadata":
+			//metaRM = res.Result
+		}
+		if i == 2 {
+			break
+		}
+	}
+
+	resp, err := c.proxy.DecodeData(ctx, blockRM, nil, nil)
 	if err != nil {
 		return
 	}
