@@ -17,52 +17,31 @@ import (
 
 var descRegexp = regexp.MustCompile(`\\\[[a-z_, ]*\\\]`)
 
-func parseEvents(log *zap.Logger, rawEvents []*eventpb.Event, currency string, divider *big.Float, exp int, nonce string, time *time.Time) ([]structs.TransactionEvent, error) {
+func parseEvents(log *zap.Logger, rawEvents []*eventpb.Event, currency string, divider *big.Float, exp int, nonce string, time *time.Time, height uint64) ([]structs.SubsetEvent, []string, error) {
 	evIndexMap := make(map[int64]struct{})
 
-	events := make([]structs.TransactionEvent, 0, len(rawEvents))
+	subsetEvents := make([]structs.SubsetEvent, 0, len(rawEvents))
+	raw := make([]string, 0, len(rawEvents))
 
 	for _, e := range rawEvents {
 		if !isEventUnique(evIndexMap, e.Index) {
 			continue
 		}
 
-		event, err := getEvent(log, e, currency, exp, divider)
+		sub, err := getEvent(log, e, currency, exp, divider)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
-		transactionEvent := structs.TransactionEvent{
-			ID:  strconv.FormatInt(e.Index, 10),
-			Sub: []structs.SubsetEvent{event},
-		}
+		sub.ID = fmt.Sprintf("%d-%d", height, e.Index)
+		sub.Completion = time
+		sub.Nonce = nonce
 
-		if event.Error != nil {
-			transactionEvent.Kind = "error"
-		}
-
-		transactionEvent.Sub = subWithNonceAndTime(&transactionEvent.Sub, nonce, time)
-		events = append(events, transactionEvent)
-
+		subsetEvents = append(subsetEvents, sub)
+		raw = append(raw, e.Raw)
 	}
 
-	return events, nil
-}
-
-func subWithNonceAndTime(subs *[]structs.SubsetEvent, nonce string, time *time.Time) []structs.SubsetEvent {
-	events := make([]structs.SubsetEvent, len(*subs))
-
-	for i, sub := range *subs {
-		event := sub
-
-		event.Completion = time
-		event.Nonce = nonce
-		event.Sub = subWithNonceAndTime(&event.Sub, nonce, time)
-
-		events[i] = event
-	}
-
-	return events
+	return subsetEvents, raw, nil
 }
 
 func isEventUnique(evIndexMap map[int64]struct{}, evIdx int64) bool {
