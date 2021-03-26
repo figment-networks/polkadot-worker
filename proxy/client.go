@@ -59,7 +59,7 @@ func (c *Client) DecodeData(ctx context.Context, block, events, storage []byte) 
 	*/
 
 	now := time.Now()
-	res, err := c.decodeClient.Decode(ctx, &decodepb.DecodeRequest{Block: block})
+	res, err := c.decodeClient.Decode(ctx, &decodepb.DecodeRequest{Block: block, Events: events})
 	if err != nil {
 		err = errors.Wrapf(err, " error decoding calls : %d")
 		rawRequestGRPCDuration.WithLabels("DecodeServiceClient", err.Error()).Observe(time.Since(now).Seconds())

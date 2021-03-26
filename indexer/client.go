@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -599,7 +600,17 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 			Params: []interface{}{respA.Result},
 		},
 	}
-	var blockRM, _ json.RawMessage
+
+	c.serverConn.Requests <- api.JsonRPCSend{
+		RespCH: ch,
+		JsonRPCRequest: api.JsonRPCRequest{
+			ID:     11,
+			Method: "state_getRuntimeVersion",
+			Params: []interface{}{respA.Result},
+		},
+	}
+
+	var blockRM, metaRM json.RawMessage
 	var i uint64
 	for res := range ch {
 		i++
@@ -607,43 +618,39 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 		case "chain_getBlock":
 			blockRM = res.Result
 		case "state_getMetadata":
-			//metaRM = res.Result
+			a := string(res.Result)
+			a = a[1 : len(a)-1] // cut out the quotes
+			metaRM = []byte(a)
+		case "state_getRuntimeVersion":
+			log.Println("res", string(res.Result))
 		}
-		if i == 2 {
+		if i == 3 {
 			break
 		}
 	}
 
-	resp, err := c.proxy.DecodeData(ctx, blockRM, nil, nil)
+	resp, err := c.proxy.DecodeData(ctx, blockRM, metaRM, nil)
 	if err != nil {
 		return
 	}
-	logger.Info("resp", zap.Any("resp", resp))
+	numberOfTransactions := uint64(len(resp.Block.Block.Extrinsics))
+	if block, err = mapper.BlockMapper(resp.Block, c.chainID, numberOfTransactions); err != nil {
+		return nil, nil, err
+	}
+
+	if numberOfTransactions == 0 {
+		return block, nil, nil
+	}
 	/*
-
-		blResp, err := c.proxy.GetBlockByHeight(ctx, height)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		numberOfTransactions := uint64(len(blResp.Block.Extrinsics))
-		if block, err = mapper.BlockMapper(blResp, c.chainID, numberOfTransactions); err != nil {
-			return nil, nil, err
-		}
-
-		if numberOfTransactions == 0 {
-			return block, nil, nil
-		}
-
 		metaResp, err := c.proxy.GetMetaByHeight(ctx, height)
 		if err != nil {
 			return nil, nil, err
 		}
-
-		if transactions, err = c.trMapper.TransactionsMapper(c.log, blResp, metaResp); err != nil {
-			return nil, nil, err
-		}
 	*/
+	if transactions, err = c.trMapper.TransactionsMapper(c.log, resp.Block, nil); err != nil {
+		return nil, nil, err
+	}
+
 	return
 }
 
