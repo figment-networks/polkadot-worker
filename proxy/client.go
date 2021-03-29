@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/figment-networks/polkadot-worker/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
@@ -16,18 +17,6 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
-
-// ClientIface interface
-type ClientIface interface {
-	GetAccountBalance(ctx context.Context, account string, height uint64) (*accountpb.GetByHeightResponse, error)
-	GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error)
-	GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.GetMetaByHeightResponse, error)
-	GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error)
-	GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error)
-	GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error)
-
-	DecodeData(ctx context.Context, block, events, storage []byte) (*decodepb.DecodeResponse, error)
-}
 
 // Client connecting to polkadot-proxy
 type Client struct {
@@ -44,22 +33,28 @@ type Client struct {
 }
 
 // NewClient is a polkadot-proxy Client constructor
-func NewClient(log *zap.Logger, rl *rate.Limiter, ac accountpb.AccountServiceClient, bc blockpb.BlockServiceClient,
-	cc chainpb.ChainServiceClient, ec eventpb.EventServiceClient, tc transactionpb.TransactionServiceClient, dc decodepb.DecodeServiceClient) *Client {
-	return &Client{log: log, rateLimiter: rl, accountClient: ac, blockClient: bc, chainClient: cc, eventClient: ec, transactionClient: tc, decodeClient: dc}
+func NewClient(log *zap.Logger, rl *rate.Limiter, conn *grpc.ClientConn) *Client {
+	return &Client{log: log,
+		rateLimiter:       rl,
+		accountClient:     accountpb.NewAccountServiceClient(conn),
+		blockClient:       blockpb.NewBlockServiceClient(conn),
+		chainClient:       chainpb.NewChainServiceClient(conn),
+		eventClient:       eventpb.NewEventServiceClient(conn),
+		transactionClient: transactionpb.NewTransactionServiceClient(conn),
+		decodeClient:      decodepb.NewDecodeServiceClient(conn)}
 }
 
 // GetAccountBalance return Account Balance by provided height
-func (c *Client) DecodeData(ctx context.Context, block, events, storage []byte) (*decodepb.DecodeResponse, error) {
-
-	/*	err := c.rateLimiter.Wait(ctx)
-		if err != nil {
-			return nil, err
-		}
-	*/
-
+func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest) (*decodepb.DecodeResponse, error) {
 	now := time.Now()
-	res, err := c.decodeClient.Decode(ctx, &decodepb.DecodeRequest{Block: block, Events: events})
+	res, err := c.decodeClient.Decode(ctx, &decodepb.DecodeRequest{
+		Block:          ddr.Block,
+		BlockHash:      ddr.BlockHash,
+		Events:         ddr.Events,
+		Timestamp:      ddr.Timestamp,
+		MetadataParent: ddr.MetadataParent,
+		RuntimeParent:  ddr.RuntimeParent,
+	})
 	if err != nil {
 		err = errors.Wrapf(err, " error decoding calls : %d")
 		rawRequestGRPCDuration.WithLabels("DecodeServiceClient", err.Error()).Observe(time.Since(now).Seconds())

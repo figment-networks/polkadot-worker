@@ -4,13 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"log"
+	"errors"
+	"fmt"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
+
+var ErrConnectionClosed = errors.New("connection closed")
 
 type JsonRPCRequest struct {
 	ID      uint64        `json:"id"`
@@ -48,6 +52,11 @@ type Conn struct {
 	Requests chan JsonRPCSend
 }
 
+type LockedResponseMap struct {
+	Map map[uint64]ResponseStore
+	L   sync.RWMutex
+}
+
 func NewConn(l *zap.Logger) *Conn {
 	return &Conn{
 		l:        l,
@@ -55,11 +64,39 @@ func NewConn(l *zap.Logger) *Conn {
 	}
 }
 
+func (conn *Conn) recv(ctx context.Context, c *websocket.Conn, done chan struct{}, resps *LockedResponseMap) {
+	defer close(done)
+	for {
+		_, message, err := c.ReadMessage()
+		if err != nil {
+			conn.l.Error("error reading next message", zap.Error(err))
+			continue
+		}
+
+		res := &JsonRPCResponse{}
+		err = json.Unmarshal(message, res)
+		if err != nil {
+			conn.l.Error("error unmarshaling jsonrpc response", zap.Error(err))
+			continue
+		}
+
+		resps.L.Lock()
+		ch := resps.Map[res.ID]
+		ch.RespCH <- Response{
+			ID:     ch.ID,
+			Type:   ch.Type,
+			Result: res.Result,
+		}
+		delete(resps.Map, res.ID)
+		resps.L.Unlock()
+	}
+}
+
 func (conn *Conn) Run(ctx context.Context, addr string) {
 
 	var nextMessageID uint64
 
-	responseMap := make(map[uint64]ResponseStore)
+	responseMap := &LockedResponseMap{Map: make(map[uint64]ResponseStore)}
 
 	urlHost := url.URL{Scheme: "ws", Host: addr, Path: "/"}
 	conn.l.Info("[API] Connecting to websocket ", zap.String("host", addr))
@@ -71,52 +108,29 @@ func (conn *Conn) Run(ctx context.Context, addr string) {
 	defer c.Close()
 
 	done := make(chan struct{})
-
-	go func(ctx context.Context) {
-		defer close(done)
-		for {
-			_, message, err := c.ReadMessage()
-			if err != nil {
-				log.Println("read:", err)
-				return
-			}
-
-			res := &JsonRPCResponse{}
-			err = json.Unmarshal(message, res)
-			if err != nil {
-				log.Println("err", err)
-			}
-
-			ch := responseMap[res.ID]
-			ch.RespCH <- Response{
-				ID:     ch.ID,
-				Type:   ch.Type,
-				Result: res.Result,
-			}
-			delete(responseMap, res.ID)
-		}
-	}(ctx)
+	go conn.recv(ctx, c, done, responseMap)
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	buff := new(bytes.Buffer)
 	enc := json.NewEncoder(buff)
+WSLOOP:
 	for {
 		select {
 		case <-ctx.Done():
 			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			if err != nil {
 				conn.l.Error("[API] Error closing websocket ", zap.Error(err))
-				return
+				break WSLOOP
 			}
 			select {
 			case <-done:
 			case <-time.After(time.Second):
 			}
-			return
+			break WSLOOP
 		case <-done:
-			return
+			break WSLOOP
 		case req := <-conn.Requests:
 			originalID := req.ID
 			req.ID = nextMessageID
@@ -126,20 +140,36 @@ func (conn *Conn) Run(ctx context.Context, addr string) {
 
 			nextMessageID++
 			if err := enc.Encode(req.JsonRPCRequest); err != nil {
-				return
+				req.RespCH <- Response{
+					ID:    originalID,
+					Type:  req.Method,
+					Error: fmt.Errorf("error encoding message: %w ", err),
+				}
+				continue WSLOOP
 			}
-			responseMap[req.ID] = ResponseStore{
+			responseMap.L.Lock()
+			responseMap.Map[req.ID] = ResponseStore{
 				ID:     originalID,
 				Type:   req.Method,
 				RespCH: req.RespCH,
 			}
+			responseMap.L.Unlock()
 			err = c.WriteMessage(websocket.TextMessage, buff.Bytes())
 			buff.Reset()
 			if err != nil {
 				conn.l.Error("[API] Error sending data websocket ", zap.Error(err))
-				return
+				break WSLOOP
 			}
 		}
 	}
+	responseMap.L.RLock()
+	for _, resp := range responseMap.Map {
+		resp.RespCH <- Response{
+			ID:    resp.ID,
+			Type:  resp.Type,
+			Error: ErrConnectionClosed,
+		}
+	}
+	responseMap.L.RUnlock()
 	// TODO(lukanus): send errors on all open
 }
