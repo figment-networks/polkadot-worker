@@ -171,5 +171,4 @@ WSLOOP:
 		}
 	}
 	responseMap.L.RUnlock()
-	// TODO(lukanus): send errors on all open
 }

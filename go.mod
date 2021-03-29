@@ -6,7 +6,8 @@ require (
 	github.com/bearcherian/rollzap v1.0.2
 	github.com/figment-networks/indexer-manager v0.1.3
 	github.com/figment-networks/indexing-engine v0.2.1
-	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210329122810-2fa50352dec3
+	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210329194909-1077499c2412
+	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/itering/scale.go v1.0.13

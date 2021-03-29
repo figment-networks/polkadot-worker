@@ -15,6 +15,7 @@ import (
 	"github.com/figment-networks/polkadot-worker/api"
 	"github.com/figment-networks/polkadot-worker/mapper"
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
+	"github.com/golang/groupcache/lru"
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
@@ -50,14 +51,22 @@ var (
 	getLatestDuration         *metrics.GroupObserver
 )
 
+type ClientCache struct {
+	BlockHashCache     *lru.Cache
+	BlockHashCacheLock sync.RWMutex
+}
+
 // Client connecting to indexer-manager
 type Client struct {
+	Cache *ClientCache
+
 	chainID         string
 	currency        string
 	exp             int
 	maxHeightsToGet uint64
 
 	serverConn *api.Conn
+	gbPool     *getBlockPool
 
 	log     *zap.Logger
 	proxy   ClientIface
@@ -79,12 +88,16 @@ func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint
 		currency:        currency,
 		exp:             exp,
 		maxHeightsToGet: maxHeightsToGet,
-		log:             log,
-		proxy:           proxy,
-		serverConn:      serverConn,
-		streams:         make(map[uuid.UUID]*cStructs.StreamAccess),
-		abMapper:        mapper.NewAccountBalanceMapper(exp, currency),
-		trMapper:        mapper.NewTransactionMapper(exp, chainID, currency),
+		gbPool:          NewGetBlockPool(300),
+		Cache: &ClientCache{
+			BlockHashCache: lru.New(3000),
+		},
+		log:        log,
+		proxy:      proxy,
+		serverConn: serverConn,
+		streams:    make(map[uuid.UUID]*cStructs.StreamAccess),
+		abMapper:   mapper.NewAccountBalanceMapper(exp, currency),
+		trMapper:   mapper.NewTransactionMapper(exp, chainID, currency),
 	}
 }
 
@@ -196,7 +209,6 @@ func (c *Client) GetAccountBalance(ctx context.Context, tr cStructs.TaskRequest,
 	}
 
 	close(out)
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -490,7 +502,7 @@ RANGE_LOOP:
 					errored <- true // (lukanus): to close publisher and asyncBlockAndTx
 					err = resp.Error
 					out <- resp
-					break INNER_LOOP
+					break RANGE_LOOP
 				default:
 					out <- resp
 				}
