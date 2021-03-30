@@ -48,15 +48,17 @@ func NewClient(log *zap.Logger, rl *rate.Limiter, conn *grpc.ClientConn) *Client
 func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest) (*decodepb.DecodeResponse, error) {
 	now := time.Now()
 	res, err := c.decodeClient.Decode(ctx, &decodepb.DecodeRequest{
-		Block:          ddr.Block,
-		BlockHash:      ddr.BlockHash,
-		Events:         ddr.Events,
-		Timestamp:      ddr.Timestamp,
-		MetadataParent: ddr.MetadataParent,
-		RuntimeParent:  ddr.RuntimeParent,
+		Block:                   ddr.Block,
+		BlockHash:               ddr.BlockHash,
+		Events:                  ddr.Events,
+		Timestamp:               ddr.Timestamp,
+		MetadataParent:          ddr.MetadataParent,
+		RuntimeParent:           ddr.RuntimeParent,
+		CurrentEraParent:        ddr.CurrentEra,
+		NextFeeMultiplierParent: ddr.NextFeeMultipier,
 	})
 	if err != nil {
-		err = errors.Wrapf(err, " error decoding calls : %d")
+		err = errors.Wrapf(err, " error calling decode : %d")
 		rawRequestGRPCDuration.WithLabels("DecodeServiceClient", err.Error()).Observe(time.Since(now).Seconds())
 		return nil, err
 	}
