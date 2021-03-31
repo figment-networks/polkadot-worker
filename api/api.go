@@ -74,7 +74,6 @@ func (conn *Conn) Send(ch chan Response, id uint64, method string, params []inte
 
 func (conn *Conn) recv(ctx context.Context, c *websocket.Conn, done chan struct{}, resps *LockedResponseMap) {
 	defer close(done)
-	//defer closedConn()
 	for {
 		_, message, err := c.ReadMessage()
 		if err != nil {
