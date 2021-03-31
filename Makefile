@@ -30,5 +30,6 @@ pack-release:
 	@rm -rf ./release
 
 .PHONY: test
-test: 
-	go test ./... -timeout 30s
+test:
+	go clean -testcache
+	go test `go list ./... | grep -v github.com/figment-networks/polkadot-worker/indexer | grep -v github.com/figment-networks/polkadot-worker/proxy` -timeout 30s
