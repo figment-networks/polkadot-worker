@@ -69,7 +69,7 @@ func (tm *TransactionMapperTest) SetupTest() {
 func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
 	tm.BlockResponse.Block.Extrinsics[0].Time = "[object Object]"
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.MetaResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse)
 
 	tm.Require().Nil(transactions)
 
@@ -80,7 +80,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
 func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() {
 	tm.BlockResponse.Block.Extrinsics[0].PartialFee = "bad"
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.MetaResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse)
 
 	tm.Require().Nil(transactions)
 
@@ -91,7 +91,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() 
 func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
 	tm.BlockResponse.Block.Extrinsics[0].Tip = "bad"
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.MetaResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse)
 
 	tm.Require().Nil(transactions)
 
@@ -100,7 +100,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse, tm.MetaResponse)
+	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse)
 
 	tm.Require().Nil(err)
 

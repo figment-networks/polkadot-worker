@@ -7,7 +7,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/figment-networks/polkadot-worker/api"
 	"github.com/figment-networks/polkadot-worker/indexer"
+	wStructs "github.com/figment-networks/polkadot-worker/structs"
 	"github.com/figment-networks/polkadot-worker/utils"
 
 	"github.com/figment-networks/indexer-manager/structs"
@@ -15,6 +17,7 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/decode/decodepb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
@@ -24,6 +27,27 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
 )
+
+type PolkaClientMock struct {
+}
+
+func (pcm *PolkaClientMock) Send(resp chan api.Response, id uint64, method string, params []interface{}) {
+
+	if id == indexer.RequestTopHeader {
+
+		resp <- api.Response{
+			ID:     id,
+			Type:   method,
+			Result: []byte(`{"number":"0x43970c"}`),
+		}
+		return
+	}
+	resp <- api.Response{
+		ID:     id,
+		Type:   method,
+		Result: []byte(`{"number"}`),
+	}
+}
 
 type IndexerClientTest struct {
 	suite.Suite
@@ -71,7 +95,8 @@ func (ic *IndexerClientTest) SetupTest() {
 	ic.Ctx = ctx
 	ic.CtxCancel = ctxCancel
 
-	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency)
+	pcm := &PolkaClientMock{}
+	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, pcm)
 	ic.ProxyClient = &proxyClientMock
 }
 
@@ -649,8 +674,10 @@ func (ic *IndexerClientTest) TestGetTransactions_GetBlockByHeightError() {
 func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 	ic.Transactions[0][0].Fee = "bad"
 
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.Blocks[0], ic.Transactions[0], ic.Events[0]), nil)
-	ic.ProxyClient.On("GetMetaByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.MetaResponse(ic.Metas[0]), nil)
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.MetaResponse(ic.Metas[0]), nil)
+
+	//ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.Blocks[0], ic.Transactions[0], ic.Events[0]), nil)
+	//ic.ProxyClient.On("GetMetaByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.MetaResponse(ic.Metas[0]), nil)
 
 	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
@@ -730,4 +757,9 @@ func (m proxyClientMock) GetHead(ctx context.Context) (*chainpb.GetHeadResponse,
 func (m proxyClientMock) GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error) {
 	args := m.Called(ctx, height)
 	return args.Get(0).(*transactionpb.GetByHeightResponse), args.Error(1)
+}
+
+func (m proxyClientMock) DecodeData(ctx context.Context, ddr wStructs.DecodeDataRequest) (*decodepb.DecodeResponse, error) {
+	args := m.Called(ctx, ddr)
+	return args.Get(0).(*decodepb.DecodeResponse), args.Error(1)
 }

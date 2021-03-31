@@ -10,7 +10,6 @@ import (
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
-	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -42,17 +41,16 @@ func NewTransactionMapper(exp int, chainID, currency string) *TransactionMapper 
 }
 
 // TransactionsMapper maps Block and Transactions response into database Transcations struct
-func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockpb.GetByHeightResponse, metaRes *chainpb.GetMetaByHeightResponse) ([]*structs.Transaction, error) {
+func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockpb.GetByHeightResponse) ([]*structs.Transaction, error) {
 	var transactions []*structs.Transaction
 	transactionMap := make(map[string]struct{})
 
 	timer := metrics.NewTimer(transactionConversionDuration)
 	defer timer.ObserveDuration()
 
-	if blockRes == nil || metaRes == nil {
-		return nil, errors.New("Block or Meta response is empty")
+	if blockRes == nil {
+		return nil, errors.New("Block response is empty")
 	}
-
 	for _, t := range blockRes.Block.Extrinsics {
 		if !isTransactionUnique(transactionMap, t.Hash) {
 			continue
@@ -84,7 +82,7 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockp
 			Hash:      t.Hash,
 			BlockHash: blockRes.Block.BlockHash,
 			Height:    uint64(blockRes.Block.Header.Height),
-			Epoch:     strconv.FormatInt(metaRes.Era, 10),
+			Epoch:     t.Epoch,
 			ChainID:   m.chainID,
 			Time:      *time,
 			Fee:       fee,

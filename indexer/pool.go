@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
+	"github.com/figment-networks/polkadot-worker/api"
 )
 
 var (
@@ -98,6 +99,54 @@ func hBTxDrain(c chan hBTx) {
 }
 
 func outRespDrain(c chan cStructs.OutResp) {
+	for {
+		select {
+		case <-c:
+		default:
+			return
+		}
+	}
+}
+
+type getBlockPool struct {
+	stor chan chan api.Response
+	lock *sync.Mutex
+}
+
+func NewGetBlockPool(cap int) *getBlockPool {
+	return &getBlockPool{
+		stor: make(chan chan api.Response, cap),
+		lock: &sync.Mutex{},
+	}
+}
+
+func (o *getBlockPool) Get() chan api.Response {
+	o.lock.Lock()
+	defer o.lock.Unlock()
+	select {
+	case a := <-o.stor:
+		// (lukanus): better safe than sorry
+		getBlockPoolDrain(a)
+		return a
+	default:
+	}
+
+	return make(chan api.Response, 20)
+}
+
+func (o *getBlockPool) Put(or chan api.Response) {
+	o.lock.Lock()
+	defer o.lock.Unlock()
+	select {
+	case o.stor <- or:
+	default:
+		close(or)
+	}
+
+	return
+}
+
+func getBlockPoolDrain(c chan api.Response) {
 	for {
 		select {
 		case <-c:

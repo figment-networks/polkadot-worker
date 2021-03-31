@@ -12,12 +12,37 @@ import (
 	"github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
+	"github.com/figment-networks/polkadot-worker/api"
 	"github.com/figment-networks/polkadot-worker/mapper"
-	"github.com/figment-networks/polkadot-worker/proxy"
+	wStructs "github.com/figment-networks/polkadot-worker/structs"
+	"github.com/golang/groupcache/lru"
+
+	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/decode/decodepb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
+
+// ClientIface interface
+type ClientIface interface {
+	GetAccountBalance(ctx context.Context, account string, height uint64) (*accountpb.GetByHeightResponse, error)
+	GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error)
+	GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.GetMetaByHeightResponse, error)
+	GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error)
+	GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error)
+	GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error)
+
+	DecodeData(ctx context.Context, ddr wStructs.DecodeDataRequest) (*decodepb.DecodeResponse, error)
+}
+
+type PolkaClient interface {
+	Send(resp chan api.Response, id uint64, method string, params []interface{})
+}
 
 const page = 100
 
@@ -30,15 +55,25 @@ var (
 	getLatestDuration         *metrics.GroupObserver
 )
 
+type ClientCache struct {
+	BlockHashCache     *lru.Cache
+	BlockHashCacheLock sync.RWMutex
+}
+
 // Client connecting to indexer-manager
 type Client struct {
+	Cache *ClientCache
+
 	chainID         string
 	currency        string
 	exp             int
 	maxHeightsToGet uint64
 
+	serverConn PolkaClient
+	gbPool     *getBlockPool
+
 	log     *zap.Logger
-	proxy   proxy.ClientIface
+	proxy   ClientIface
 	sLock   sync.Mutex
 	streams map[uuid.UUID]*cStructs.StreamAccess
 
@@ -47,7 +82,7 @@ type Client struct {
 }
 
 // NewClient is a indexer-manager Client constructor
-func NewClient(log *zap.Logger, proxy proxy.ClientIface, exp int, maxHeightsToGet uint64, chainID, currency string) *Client {
+func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint64, chainID, currency string, serverConn PolkaClient) *Client {
 	getAccountBalanceDuration = endpointDuration.WithLabels("getAccountBalance")
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
@@ -57,11 +92,16 @@ func NewClient(log *zap.Logger, proxy proxy.ClientIface, exp int, maxHeightsToGe
 		currency:        currency,
 		exp:             exp,
 		maxHeightsToGet: maxHeightsToGet,
-		log:             log,
-		proxy:           proxy,
-		streams:         make(map[uuid.UUID]*cStructs.StreamAccess),
-		abMapper:        mapper.NewAccountBalanceMapper(exp, currency),
-		trMapper:        mapper.NewTransactionMapper(exp, chainID, currency),
+		gbPool:          NewGetBlockPool(300),
+		Cache: &ClientCache{
+			BlockHashCache: lru.New(3000),
+		},
+		log:        log,
+		proxy:      proxy,
+		serverConn: serverConn,
+		streams:    make(map[uuid.UUID]*cStructs.StreamAccess),
+		abMapper:   mapper.NewAccountBalanceMapper(exp, currency),
+		trMapper:   mapper.NewTransactionMapper(exp, chainID, currency),
 	}
 }
 
@@ -173,7 +213,6 @@ func (c *Client) GetAccountBalance(ctx context.Context, tr cStructs.TaskRequest,
 	}
 
 	close(out)
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -236,7 +275,9 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
-	head, err := c.proxy.GetHead(ctx)
+	ch := c.gbPool.Get()
+	defer c.gbPool.Put(ch)
+	height, err := getLatestHeight(c.serverConn, c.Cache, ch)
 	if err != nil {
 		stream.Send(cStructs.TaskResponse{
 			Id:    tr.Id,
@@ -246,7 +287,7 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 		return
 	}
 
-	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, uint64(head.GetHeight()))
+	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, height)
 
 	if err := sendTransactionsInRange(ctx, c.log, c, hr, out); err != nil {
 		stream.Send(cStructs.TaskResponse{
@@ -442,7 +483,7 @@ func sendTransactionsInRange(ctx context.Context, logger *zap.Logger, client *Cl
 	defer close(errored)
 
 	wg := &sync.WaitGroup{}
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go asyncBlockAndTx(ctx, logger, wg, client, chIn)
 	}
@@ -467,7 +508,7 @@ RANGE_LOOP:
 					errored <- true // (lukanus): to close publisher and asyncBlockAndTx
 					err = resp.Error
 					out <- resp
-					break INNER_LOOP
+					break RANGE_LOOP
 				default:
 					out <- resp
 				}
@@ -535,6 +576,7 @@ func populateRange(in, out chan hBTx, hr structs.HeightRange, er chan bool) {
 func asyncBlockAndTx(ctx context.Context, logger *zap.Logger, wg *sync.WaitGroup, client *Client, cinn chan hBTx) {
 	defer wg.Done()
 	for in := range cinn {
+
 		b, txs, err := blockAndTx(ctx, logger, client, in.Height)
 		if err != nil {
 			in.Ch <- cStructs.OutResp{
@@ -547,46 +589,19 @@ func asyncBlockAndTx(ctx context.Context, logger *zap.Logger, wg *sync.WaitGroup
 			Type:    "Block",
 			Payload: b,
 		}
-		if txs != nil {
-			for _, t := range txs {
-				in.Ch <- cStructs.OutResp{
-					Type:    "Transaction",
-					Payload: t,
-				}
+
+		for _, t := range txs {
+			in.Ch <- cStructs.OutResp{
+				Type:    "Transaction",
+				Payload: t,
 			}
 		}
 
 		in.Ch <- cStructs.OutResp{
 			Type: "Partial",
 		}
-	}
-}
 
-func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint64) (block *structs.Block, transactions []*structs.Transaction, err error) {
-	blResp, err := c.proxy.GetBlockByHeight(ctx, height)
-	if err != nil {
-		return nil, nil, err
 	}
-
-	numberOfTransactions := uint64(len(blResp.Block.Extrinsics))
-	if block, err = mapper.BlockMapper(blResp, c.chainID, numberOfTransactions); err != nil {
-		return nil, nil, err
-	}
-
-	if numberOfTransactions == 0 {
-		return block, nil, nil
-	}
-
-	metaResp, err := c.proxy.GetMetaByHeight(ctx, height)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if transactions, err = c.trMapper.TransactionsMapper(c.log, blResp, metaResp); err != nil {
-		return nil, nil, err
-	}
-
-	return
 }
 
 func (c *Client) wrapErrorsFromChan(errChan chan error) error {

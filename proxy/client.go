@@ -4,9 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/figment-networks/polkadot-worker/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/decode/decodepb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 	"golang.org/x/time/rate"
@@ -15,16 +17,6 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
-
-// ClientIface interface
-type ClientIface interface {
-	GetAccountBalance(ctx context.Context, account string, height uint64) (*accountpb.GetByHeightResponse, error)
-	GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.GetByHeightResponse, error)
-	GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.GetMetaByHeightResponse, error)
-	GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error)
-	GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error)
-	GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error)
-}
 
 // Client connecting to polkadot-proxy
 type Client struct {
@@ -37,12 +29,42 @@ type Client struct {
 	chainClient       chainpb.ChainServiceClient
 	eventClient       eventpb.EventServiceClient
 	transactionClient transactionpb.TransactionServiceClient
+	decodeClient      decodepb.DecodeServiceClient
 }
 
 // NewClient is a polkadot-proxy Client constructor
-func NewClient(log *zap.Logger, rl *rate.Limiter, ac accountpb.AccountServiceClient, bc blockpb.BlockServiceClient,
-	cc chainpb.ChainServiceClient, ec eventpb.EventServiceClient, tc transactionpb.TransactionServiceClient) *Client {
-	return &Client{log: log, rateLimiter: rl, accountClient: ac, blockClient: bc, chainClient: cc, eventClient: ec, transactionClient: tc}
+func NewClient(log *zap.Logger, rl *rate.Limiter, conn *grpc.ClientConn) *Client {
+	return &Client{log: log,
+		rateLimiter:       rl,
+		accountClient:     accountpb.NewAccountServiceClient(conn),
+		blockClient:       blockpb.NewBlockServiceClient(conn),
+		chainClient:       chainpb.NewChainServiceClient(conn),
+		eventClient:       eventpb.NewEventServiceClient(conn),
+		transactionClient: transactionpb.NewTransactionServiceClient(conn),
+		decodeClient:      decodepb.NewDecodeServiceClient(conn)}
+}
+
+// GetAccountBalance return Account Balance by provided height
+func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest) (*decodepb.DecodeResponse, error) {
+	now := time.Now()
+	res, err := c.decodeClient.Decode(ctx, &decodepb.DecodeRequest{
+		MetadataParent:          ddr.MetadataParent,
+		Block:                   ddr.Block,
+		BlockHash:               ddr.BlockHash,
+		Events:                  ddr.Events,
+		Timestamp:               ddr.Timestamp,
+		RuntimeParent:           ddr.RuntimeParent,
+		CurrentEraParent:        ddr.CurrentEra,
+		NextFeeMultiplierParent: ddr.NextFeeMultipier,
+	})
+	if err != nil {
+		rawRequestGRPCDuration.WithLabels("DecodeServiceClient", "ERR").Observe(time.Since(now).Seconds())
+		return nil, errors.Wrapf(err, "error calling decode")
+	}
+
+	rawRequestGRPCDuration.WithLabels("DecodeServiceClient", "OK").Observe(time.Since(now).Seconds())
+
+	return res, err
 }
 
 // GetAccountBalance return Account Balance by provided height
@@ -59,7 +81,7 @@ func (c *Client) GetAccountBalance(ctx context.Context, account string, height u
 	res, err := c.accountClient.GetByHeight(ctx, &accountpb.GetByHeightRequest{Height: int64(height), Address: account})
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting account balance by height: %d", height)
-		rawRequestGRPCDuration.WithLabels("GetAccountBalanceByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		rawRequestGRPCDuration.WithLabels("GetAccountBalanceByHeight", "ERR").Observe(time.Since(now).Seconds())
 		return nil, err
 	}
 
@@ -81,7 +103,7 @@ func (c *Client) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.
 	res, err := c.blockClient.GetByHeight(ctx, &blockpb.GetByHeightRequest{Height: int64(height)}, grpc.WaitForReady(true))
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting block by height: %d", height)
-		rawRequestGRPCDuration.WithLabels("GetBlockByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		rawRequestGRPCDuration.WithLabels("GetBlockByHeight", "ERR").Observe(time.Since(now).Seconds())
 		return nil, err
 	}
 
@@ -100,11 +122,10 @@ func (c *Client) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb
 	}
 
 	now := time.Now()
-
 	res, err := c.eventClient.GetByHeight(ctx, &eventpb.GetByHeightRequest{Height: int64(height)}, grpc.WaitForReady(true))
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting event by height: %d", height)
-		rawRequestGRPCDuration.WithLabels("GetEventsByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		rawRequestGRPCDuration.WithLabels("GetEventsByHeight", "ERR").Observe(time.Since(now).Seconds())
 		return nil, err
 	}
 
@@ -127,7 +148,7 @@ func (c *Client) GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.G
 	res, err := c.chainClient.GetMetaByHeight(ctx, &chainpb.GetMetaByHeightRequest{Height: int64(height)})
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting meta by height: %d", height)
-		rawRequestGRPCDuration.WithLabels("GetMetaByHeight", err.Error()).Observe(time.Since(now).Seconds())
+		rawRequestGRPCDuration.WithLabels("GetMetaByHeight", "ERR").Observe(time.Since(now).Seconds())
 		return nil, err
 	}
 
@@ -145,7 +166,7 @@ func (c *Client) GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error) 
 	res, err := c.chainClient.GetHead(ctx, &chainpb.GetHeadRequest{})
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting head")
-		rawRequestGRPCDuration.WithLabels("GetHead", err.Error()).Observe(time.Since(now).Seconds())
+		rawRequestGRPCDuration.WithLabels("GetHead", "ERR").Observe(time.Since(now).Seconds())
 		return nil, err
 	}
 
