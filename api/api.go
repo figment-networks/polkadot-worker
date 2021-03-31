@@ -74,11 +74,12 @@ func (conn *Conn) Send(ch chan Response, id uint64, method string, params []inte
 
 func (conn *Conn) recv(ctx context.Context, c *websocket.Conn, done chan struct{}, resps *LockedResponseMap) {
 	defer close(done)
+	//defer closedConn()
 	for {
 		_, message, err := c.ReadMessage()
 		if err != nil {
 			conn.l.Error("error reading next message", zap.Error(err))
-			continue
+			return
 		}
 
 		res := &JsonRPCResponse{}
@@ -101,19 +102,31 @@ func (conn *Conn) recv(ctx context.Context, c *websocket.Conn, done chan struct{
 }
 
 func (conn *Conn) Run(ctx context.Context, addr string) {
-	f := make(chan struct{})
+	f := make(chan struct{}, 1)
+	multipliers := []int{1, 1, 1, 2, 3, 4, 6, 10}
+	var i int
 	go conn.run(ctx, addr, f)
-	select { // reconnects respecting context
-	case <-ctx.Done():
-		return
-	case <-f:
-		<-time.After(time.Second)
-		go conn.run(ctx, addr, f)
+	for {
+		select { // reconnects respecting context
+		case <-ctx.Done():
+			return
+		case <-f:
+			var tryM int
+			if len(multipliers) <= i {
+				tryM = multipliers[7]
+			} else {
+				tryM = multipliers[i]
+			}
+
+			<-time.After(time.Second * time.Duration(tryM))
+
+			go conn.run(ctx, addr, f)
+			i++
+		}
 	}
 }
 
 func (conn *Conn) run(ctx context.Context, addr string, f chan struct{}) {
-
 	defer conn.l.Sync()
 	var nextMessageID uint64
 
@@ -121,10 +134,11 @@ func (conn *Conn) run(ctx context.Context, addr string, f chan struct{}) {
 
 	urlHost := url.URL{Scheme: "ws", Host: addr, Path: "/"}
 	conn.l.Info("[API] Connecting to websocket ", zap.String("host", addr))
-
 	c, _, err := websocket.DefaultDialer.DialContext(ctx, urlHost.String(), nil)
 	if err != nil {
 		conn.l.Error("[API] Error connecting to websocket ", zap.String("host", addr), zap.Error(err))
+		f <- struct{}{}
+		return
 	}
 	defer c.Close()
 

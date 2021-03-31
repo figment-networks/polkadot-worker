@@ -97,7 +97,11 @@ func main() {
 	defer grpcConn.Close()
 
 	connApi := api.NewConn(logger.GetLogger())
-	go connApi.Run(ctx, cfg.PolkadotNodeAddr)
+
+	polkaNodes := strings.Split(cfg.PolkadotNodeAddrs, ",")
+	for _, address := range polkaNodes {
+		go connApi.Run(ctx, address)
+	}
 
 	indexerClient := createIndexerClient(ctx, logger.GetLogger(), cfg, grpcConn, connApi)
 	go serveGRPC(logger.GetLogger(), *cfg, indexerClient)
