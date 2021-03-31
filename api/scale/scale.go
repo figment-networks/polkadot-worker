@@ -1,4 +1,4 @@
-package api
+package scale
 
 import (
 	"log"
@@ -18,8 +18,5 @@ func ParseMetadata(res string) types.MetadataStruct {
 	if m.Version != "MetadataV12Decoder" {
 		log.Println("MetadataV12 version should equal 12")
 	}
-	/*
-		a, _ := json.Marshal(m.Metadata)
-		log.Println("m", string(a))*/
 	return m.Metadata
 }

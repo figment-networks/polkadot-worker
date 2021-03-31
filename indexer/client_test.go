@@ -71,7 +71,7 @@ func (ic *IndexerClientTest) SetupTest() {
 	ic.Ctx = ctx
 	ic.CtxCancel = ctxCancel
 
-	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency)
+	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, nil)
 	ic.ProxyClient = &proxyClientMock
 }
 

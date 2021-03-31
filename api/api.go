@@ -64,6 +64,14 @@ func NewConn(l *zap.Logger) *Conn {
 	}
 }
 
+// Send is there just because of mock, it doesn't make much sense otherwise
+func (conn *Conn) Send(ch chan Response, id uint64, method string, params []interface{}) {
+	conn.Requests <- JsonRPCSend{
+		RespCH:         ch,
+		JsonRPCRequest: JsonRPCRequest{ID: id, Method: method, Params: params},
+	}
+}
+
 func (conn *Conn) recv(ctx context.Context, c *websocket.Conn, done chan struct{}, resps *LockedResponseMap) {
 	defer close(done)
 	for {

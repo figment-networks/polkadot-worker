@@ -36,28 +36,20 @@ func (bc *BlockClientTest) SetupTest() {
 	logger, err := zap.NewDevelopment()
 	bc.Require().Nil(err)
 
-	accountClientMock := accountClientMock{}
-	blockClientMock := blockClientMock{}
-	chainClientMock := chainClientMock{}
-	eventClientMock := eventClientMock{}
-	transactionClientMock := transactionClientMock{}
 	rateLimiter := rate.NewLimiter(rate.Limit(100), 100)
 
 	bc.Client = proxy.NewClient(
 		logger,
 		rateLimiter,
-		&accountClientMock,
-		&blockClientMock,
-		&chainClientMock,
-		&eventClientMock,
-		&transactionClientMock,
+		nil,
 	)
-
-	bc.AccountClientMock = &accountClientMock
-	bc.BlockClientMock = &blockClientMock
-	bc.ChainClientMock = &chainClientMock
-	bc.EventClientMock = &eventClientMock
-	bc.TransactionClientMock = &transactionClientMock
+	/*
+		bc.AccountClientMock = &accountClientMock
+		bc.BlockClientMock = &blockClientMock
+		bc.ChainClientMock = &chainClientMock
+		bc.EventClientMock = &eventClientMock
+		bc.TransactionClientMock = &transactionClientMock
+	*/
 }
 
 func (bc *BlockClientTest) TestGetBlockByHeight_OK() {

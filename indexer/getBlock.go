@@ -2,7 +2,10 @@ package indexer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadot-worker/api"
@@ -14,6 +17,8 @@ import (
 
 const (
 	RequestBlockHash = iota + 1
+	RequestFinalizedHead
+	RequestTopHeader
 	RequestParentBlockHash
 	RequestGrandparentBlockHash
 	RequestBlock
@@ -39,25 +44,35 @@ const PolkadotTypeCurrentEra = "0x5f3e4907f716ac89b6347d15ececedca0b6a45321efae9
 
 func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint64) (block *structs.Block, transactions []*structs.Transaction, err error) {
 
+	logger.Debug("Getting Logs for ", zap.Uint64("height", height))
+	now := time.Now()
 	ch := c.gbPool.Get()
 	defer c.gbPool.Put(ch)
+
+	if height == 0 {
+		height, err = getLatestHeight(c.serverConn, c.Cache, ch)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error getting latest height : %w", err)
+		}
+	}
+
 	blH, pBlH, gpBLH, err := getBlockHashes(height, c.serverConn, c.Cache, ch)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error unmarshaling block data: %w  ", err)
+		return nil, nil, fmt.Errorf("error unmarshaling block data: %w", err)
 	}
 
+	logger.Debug("Get block ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
 	ddr, err := getOthers(blH, pBlH, gpBLH, c.serverConn, ch)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error unmarshaling block data: %w  ", err)
+		return nil, nil, fmt.Errorf("error unmarshaling block data: %w", err)
 	}
-
+	logger.Debug("Others ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
 	ddr.BlockHash = blH
 
 	resp, err := c.proxy.DecodeData(ctx, ddr)
 	if err != nil {
 		return nil, nil, err
 	}
-
 	numberOfTransactions := uint64(len(resp.Block.Block.Extrinsics))
 	if block, err = mapper.BlockMapper(resp.Block, c.chainID, numberOfTransactions); err != nil {
 		return nil, nil, err
@@ -71,18 +86,53 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 		return nil, nil, err
 	}
 
-	return
+	return block, transactions, nil
 }
 
-func getBlockHashes(height uint64, conn *api.Conn, cache *ClientCache, ch chan api.Response) (blockHash, parentHash, grandparentHash string, err error) {
+type BlockHeader struct {
+	Number string `json:"number"`
+}
+
+func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response) (height uint64, err error) {
+	conn.Send(ch, RequestFinalizedHead, "chain_getFinalizedHead", nil)
+	resp := <-ch
+
+	conn.Send(ch, RequestTopHeader, "chain_getHeader", []interface{}{resp.Result})
+	header := <-ch
+
+	bH := &BlockHeader{}
+	s := string(header.Result)
+	if err := json.Unmarshal([]byte(s[1:len(s)-1]), bH); err != nil {
+		return 0, err
+	}
+
+	if bH.Number == "" {
+		return 0, fmt.Errorf("response from ws is wrong: %s ", s)
+	}
+
+	height, err = strconv.ParseUint(s, 10, 64)
+	if err == nil {
+		cache.BlockHashCacheLock.Lock()
+		cache.BlockHashCache.Add(height, resp.Result)
+		cache.BlockHashCacheLock.Unlock()
+	}
+	return height, err
+}
+
+func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan api.Response) (blockHash, parentHash, grandparentHash string, err error) {
 	var (
 		expected uint8
 	)
-	conn.Requests <- api.JsonRPCSend{
-		RespCH:         ch,
-		JsonRPCRequest: api.JsonRPCRequest{ID: RequestBlockHash, Method: "chain_getBlockHash", Params: []interface{}{height}},
+
+	cache.BlockHashCacheLock.RLock()
+	HS, ok := cache.BlockHashCache.Get(height)
+	cache.BlockHashCacheLock.RUnlock()
+	if ok {
+		blockHash = HS.(string)
+	} else {
+		conn.Send(ch, RequestBlockHash, "chain_getBlockHash", []interface{}{height})
+		expected++
 	}
-	expected++
 
 	if height > 0 {
 		cache.BlockHashCacheLock.RLock()
@@ -92,10 +142,7 @@ func getBlockHashes(height uint64, conn *api.Conn, cache *ClientCache, ch chan a
 		if ok {
 			parentHash = pHS.(string)
 		} else {
-			conn.Requests <- api.JsonRPCSend{
-				RespCH:         ch,
-				JsonRPCRequest: api.JsonRPCRequest{ID: RequestParentBlockHash, Method: "chain_getBlockHash", Params: []interface{}{height - 1}},
-			}
+			conn.Send(ch, RequestParentBlockHash, "chain_getBlockHash", []interface{}{height - 1})
 			expected++
 		}
 	}
@@ -108,13 +155,9 @@ func getBlockHashes(height uint64, conn *api.Conn, cache *ClientCache, ch chan a
 		if ok {
 			grandparentHash = gpHS.(string)
 		} else {
-
-			conn.Requests <- api.JsonRPCSend{
-				RespCH:         ch,
-				JsonRPCRequest: api.JsonRPCRequest{ID: RequestGrandparentBlockHash, Method: "chain_getBlockHash", Params: []interface{}{height - 2}},
-			}
+			conn.Send(ch, RequestGrandparentBlockHash, "chain_getBlockHash", []interface{}{height - 2})
+			expected++
 		}
-		expected++
 	}
 
 	var i uint8
@@ -152,42 +195,18 @@ func getBlockHashes(height uint64, conn *api.Conn, cache *ClientCache, ch chan a
 	return blockHash, parentHash, grandparentHash, err
 }
 
-func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn *api.Conn, ch chan api.Response) (ddr wStructs.DecodeDataRequest, err error) {
+func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn PolkaClient, ch chan api.Response) (ddr wStructs.DecodeDataRequest, err error) {
 
-	conn.Requests <- api.JsonRPCSend{
-		RespCH:         ch,
-		JsonRPCRequest: api.JsonRPCRequest{ID: RequestBlock, Method: "chain_getBlock", Params: []interface{}{blockHash}},
-	}
+	conn.Send(ch, RequestBlock, "chain_getBlock", []interface{}{blockHash})
 
-	conn.Requests <- api.JsonRPCSend{
-		RespCH:         ch,
-		JsonRPCRequest: api.JsonRPCRequest{ID: RequestTimestamp, Method: "state_getStorage", Params: []interface{}{PolkadotTypeTimeNow, blockHash}},
-	}
+	conn.Send(ch, RequestTimestamp, "state_getStorage", []interface{}{PolkadotTypeTimeNow, blockHash})
+	conn.Send(ch, RequestSystemEvents, "state_getStorage", []interface{}{PolkadotTypeSystemEvents, blockHash})
 
-	conn.Requests <- api.JsonRPCSend{
-		RespCH:         ch,
-		JsonRPCRequest: api.JsonRPCRequest{ID: RequestSystemEvents, Method: "state_getStorage", Params: []interface{}{PolkadotTypeSystemEvents, blockHash}},
-	}
+	conn.Send(ch, RequestNextFeeMultipier, "state_getStorage", []interface{}{PolkadotTypeNextFeeMultiplier, parentBlockHash})
+	conn.Send(ch, RequestCurrentEra, "state_getStorage", []interface{}{PolkadotTypeCurrentEra, parentBlockHash})
 
-	conn.Requests <- api.JsonRPCSend{
-		RespCH:         ch,
-		JsonRPCRequest: api.JsonRPCRequest{ID: RequestNextFeeMultipier, Method: "state_getStorage", Params: []interface{}{PolkadotTypeNextFeeMultiplier, parentBlockHash}},
-	}
-
-	conn.Requests <- api.JsonRPCSend{
-		RespCH:         ch,
-		JsonRPCRequest: api.JsonRPCRequest{ID: RequestCurrentEra, Method: "state_getStorage", Params: []interface{}{PolkadotTypeCurrentEra, parentBlockHash}},
-	}
-
-	conn.Requests <- api.JsonRPCSend{
-		RespCH:         ch,
-		JsonRPCRequest: api.JsonRPCRequest{ID: RequestParentMetadata, Method: "state_getMetadata", Params: []interface{}{grandParentBlockHash}},
-	}
-
-	conn.Requests <- api.JsonRPCSend{
-		RespCH:         ch,
-		JsonRPCRequest: api.JsonRPCRequest{ID: RequestParentRuntimeVersion, Method: "state_getRuntimeVersion", Params: []interface{}{grandParentBlockHash}},
-	}
+	conn.Send(ch, RequestParentMetadata, "state_getMetadata", []interface{}{grandParentBlockHash})
+	conn.Send(ch, RequestParentRuntimeVersion, "state_getRuntimeVersion", []interface{}{grandParentBlockHash})
 
 	ddr = wStructs.DecodeDataRequest{}
 

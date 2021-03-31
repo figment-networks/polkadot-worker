@@ -40,6 +40,10 @@ type ClientIface interface {
 	DecodeData(ctx context.Context, ddr wStructs.DecodeDataRequest) (*decodepb.DecodeResponse, error)
 }
 
+type PolkaClient interface {
+	Send(resp chan api.Response, id uint64, method string, params []interface{})
+}
+
 const page = 100
 
 var (
@@ -65,7 +69,7 @@ type Client struct {
 	exp             int
 	maxHeightsToGet uint64
 
-	serverConn *api.Conn
+	serverConn PolkaClient
 	gbPool     *getBlockPool
 
 	log     *zap.Logger
@@ -78,7 +82,7 @@ type Client struct {
 }
 
 // NewClient is a indexer-manager Client constructor
-func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint64, chainID, currency string, serverConn *api.Conn) *Client {
+func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint64, chainID, currency string, serverConn PolkaClient) *Client {
 	getAccountBalanceDuration = endpointDuration.WithLabels("getAccountBalance")
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
