@@ -41,7 +41,7 @@ func NewTransactionMapper(exp int, chainID, currency string) *TransactionMapper 
 }
 
 // TransactionsMapper maps Block and Transactions response into database Transcations struct
-func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockpb.GetByHeightResponse, era string) ([]*structs.Transaction, error) {
+func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockpb.GetByHeightResponse) ([]*structs.Transaction, error) {
 	var transactions []*structs.Transaction
 	transactionMap := make(map[string]struct{})
 
@@ -75,8 +75,7 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockp
 			Hash:      t.Hash,
 			BlockHash: blockRes.Block.BlockHash,
 			Height:    uint64(blockRes.Block.Header.Height),
-			//			Epoch:     strconv.FormatInt(metaRes.Era, 10),
-			Epoch:     era,
+			Epoch:     t.Epoch,
 			ChainID:   m.chainID,
 			Time:      *time,
 			Fee:       fee,
