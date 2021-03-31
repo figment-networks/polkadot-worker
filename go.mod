@@ -4,8 +4,8 @@ go 1.16
 
 require (
 	github.com/bearcherian/rollzap v1.0.2
-	github.com/figment-networks/indexer-manager v0.1.3
-	github.com/figment-networks/indexing-engine v0.2.1
+	github.com/figment-networks/indexer-manager v0.1.4
+	github.com/figment-networks/indexing-engine v0.2.1 
 	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210331143753-91363345b874
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e
 	github.com/google/uuid v1.2.0

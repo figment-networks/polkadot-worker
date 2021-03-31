@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
@@ -171,12 +172,14 @@ func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bRe
 		sut.Require().Equal(t.Time, strconv.Itoa(int(transaction.Time.Unix())))
 		sut.Require().Equal("0.0.1", transaction.Version)
 		sut.Require().Equal(!t.IsSuccess, transaction.HasErrors)
+		sut.Require().Equal(strings.ToLower(t.Section), transaction.Events[0].Module)
+		sut.Require().Equal([]string{strings.ToLower(t.Method)}, transaction.Events[0].Type)
 
 		validateAmount(sut, &transaction.Fee[0], int(exp), t.FeeAmount, t.FeeAmountTxt, currency)
 
-		sut.Require().Len(transaction.Events, len(evResp))
+		sut.Require().Len(transaction.Events[0].Sub, len(evResp))
 		for i, e := range evResp {
-			sut.Require().Equal(strconv.Itoa(int(e.Index)), transaction.Events[i].ID)
+			sut.Require().Equal(fmt.Sprintf("%d-%d", bResp.Height, e.Index), transaction.Events[0].Sub[i].ID)
 
 			expectedType := strings.ToLower(e.Method)
 			for _, d := range e.EventData {
@@ -185,7 +188,7 @@ func ValidateTransactions(sut *suite.Suite, transaction structs.Transaction, bRe
 				}
 			}
 
-			event := transaction.Events[i].Sub[0]
+			event := transaction.Events[0].Sub[i]
 			sut.Require().Equal(e.Section, event.Module)
 			sut.Require().Equal([]string{expectedType}, event.Type)
 			sut.Require().Equal(t.Time, strconv.Itoa(int(event.Completion.Unix())))
