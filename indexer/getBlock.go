@@ -74,7 +74,7 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 		return nil, nil, err
 	}
 	numberOfTransactions := uint64(len(resp.Block.Block.Extrinsics))
-	if block, err = mapper.BlockMapper(resp.Block, c.chainID, numberOfTransactions); err != nil {
+	if block, err = mapper.BlockMapper(resp.Block, c.chainID, resp.Era, numberOfTransactions); err != nil {
 		return nil, nil, err
 	}
 
@@ -82,7 +82,7 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 		return block, nil, nil
 	}
 
-	if transactions, err = c.trMapper.TransactionsMapper(c.log, resp.Block, resp.Era); err != nil {
+	if transactions, err = c.trMapper.TransactionsMapper(c.log, resp.Block); err != nil {
 		return nil, nil, err
 	}
 

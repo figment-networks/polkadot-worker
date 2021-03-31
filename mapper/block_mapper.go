@@ -2,7 +2,6 @@ package mapper
 
 import (
 	"errors"
-	"strconv"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
@@ -10,7 +9,7 @@ import (
 )
 
 // BlockMapper maps polkadothub-proxy Block to indexer-manager Block
-func BlockMapper(block *blockpb.GetByHeightResponse, chainID string, numberOfTransactions uint64) (*structs.Block, error) {
+func BlockMapper(block *blockpb.GetByHeightResponse, chainID, epoch string, numberOfTransactions uint64) (*structs.Block, error) {
 	timer := metrics.NewTimer(conversionDuration.WithLabels("block"))
 	defer timer.ObserveDuration()
 
@@ -22,7 +21,7 @@ func BlockMapper(block *blockpb.GetByHeightResponse, chainID string, numberOfTra
 
 	return &structs.Block{
 		ChainID:              chainID,
-		Epoch:                strconv.Itoa(int(time.Unix())),
+		Epoch:                epoch,
 		Hash:                 block.Block.BlockHash,
 		Height:               uint64(block.Block.Header.Height),
 		NumberOfTransactions: numberOfTransactions,
