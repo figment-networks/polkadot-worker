@@ -275,7 +275,9 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
-	head, err := c.proxy.GetHead(ctx)
+	ch := c.gbPool.Get()
+	defer c.gbPool.Put(ch)
+	height, err := getLatestHeight(c.serverConn, c.Cache, ch)
 	if err != nil {
 		stream.Send(cStructs.TaskResponse{
 			Id:    tr.Id,
@@ -285,7 +287,7 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 		return
 	}
 
-	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, uint64(head.GetHeight()))
+	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, height)
 
 	if err := sendTransactionsInRange(ctx, c.log, c, hr, out); err != nil {
 		stream.Send(cStructs.TaskResponse{
@@ -587,12 +589,11 @@ func asyncBlockAndTx(ctx context.Context, logger *zap.Logger, wg *sync.WaitGroup
 			Type:    "Block",
 			Payload: b,
 		}
-		if txs != nil {
-			for _, t := range txs {
-				in.Ch <- cStructs.OutResp{
-					Type:    "Transaction",
-					Payload: t,
-				}
+
+		for _, t := range txs {
+			in.Ch <- cStructs.OutResp{
+				Type:    "Transaction",
+				Payload: t,
 			}
 		}
 

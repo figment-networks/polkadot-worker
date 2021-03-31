@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
+	"math/big"
+	"strings"
 	"time"
 
 	"github.com/figment-networks/indexer-manager/structs"
@@ -43,8 +44,6 @@ const PolkadotTypeNextFeeMultiplier = "0x3f1467a096bcd71a5b6a0c8155e208103f2edf3
 const PolkadotTypeCurrentEra = "0x5f3e4907f716ac89b6347d15ececedca0b6a45321efae92aea15e0740ec7afe7"
 
 func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint64) (block *structs.Block, transactions []*structs.Transaction, err error) {
-
-	logger.Debug("Getting Logs for ", zap.Uint64("height", height))
 	now := time.Now()
 	ch := c.gbPool.Get()
 	defer c.gbPool.Put(ch)
@@ -61,12 +60,10 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 		return nil, nil, fmt.Errorf("error unmarshaling block data: %w", err)
 	}
 
-	logger.Debug("Get block ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
 	ddr, err := getOthers(blH, pBlH, gpBLH, c.serverConn, ch)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error unmarshaling block data: %w", err)
 	}
-	logger.Debug("Others ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
 	ddr.BlockHash = blH
 
 	resp, err := c.proxy.DecodeData(ctx, ddr)
@@ -86,6 +83,7 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 		return nil, nil, err
 	}
 
+	logger.Debug("Finished ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
 	return block, transactions, nil
 }
 
@@ -107,16 +105,18 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 	}
 
 	bH := &BlockHeader{}
-	s := string(header.Result)
-	if err := json.Unmarshal([]byte(s[1:len(s)-1]), bH); err != nil {
+	if err := json.Unmarshal(header.Result, bH); err != nil {
 		return 0, err
 	}
 
 	if bH.Number == "" {
-		return 0, fmt.Errorf("response from ws is wrong: %s ", s)
+		return 0, fmt.Errorf("response from ws is wrong: %s ", string(header.Result))
 	}
 
-	height, err = strconv.ParseUint(s, 10, 64)
+	numberStr := strings.Replace(bH.Number, "0x", "", -1)
+	n := new(big.Int)
+	n.SetString(numberStr, 16)
+	height = n.Uint64()
 	if err == nil {
 		cache.BlockHashCacheLock.Lock()
 		cache.BlockHashCache.Add(height, resp.Result)
@@ -164,6 +164,10 @@ func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 			conn.Send(ch, RequestGrandparentBlockHash, "chain_getBlockHash", []interface{}{height - 2})
 			expected++
 		}
+	}
+
+	if expected == 0 {
+		return blockHash, parentHash, grandparentHash, nil
 	}
 
 	var i uint8

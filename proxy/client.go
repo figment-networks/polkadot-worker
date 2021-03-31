@@ -122,7 +122,6 @@ func (c *Client) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb
 	}
 
 	now := time.Now()
-
 	res, err := c.eventClient.GetByHeight(ctx, &eventpb.GetByHeightRequest{Height: int64(height)}, grpc.WaitForReady(true))
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting event by height: %d", height)
