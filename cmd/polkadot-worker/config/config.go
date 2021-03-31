@@ -29,6 +29,7 @@ type Config struct {
 	HTTPPort string `json:"http_port" envconfig:"HTTP_PORT" default:"8087"`
 
 	PolkadotProxyAddr string `json:"polkadot_proxy_addr" envconfig:"POLKADOT_PROXY_ADDR"`
+	PolkadotNodeAddr  string `json:"polkadot_node_addr" envconfig:"POLKADOT_NODE_ADDR"`
 	Network           string `json:"network" envconfig:"NETWORK" default:"polkadot"`
 	ChainID           string `json:"chain_id" envconfig:"CHAIN_ID" default:"mainnet"`
 

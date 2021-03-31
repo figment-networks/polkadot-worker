@@ -101,7 +101,20 @@ func (conn *Conn) recv(ctx context.Context, c *websocket.Conn, done chan struct{
 }
 
 func (conn *Conn) Run(ctx context.Context, addr string) {
+	f := make(chan struct{})
+	go conn.run(ctx, addr, f)
+	select { // reconnects respecting context
+	case <-ctx.Done():
+		return
+	case <-f:
+		<-time.After(time.Second)
+		go conn.run(ctx, addr, f)
+	}
+}
 
+func (conn *Conn) run(ctx context.Context, addr string, f chan struct{}) {
+
+	defer conn.l.Sync()
 	var nextMessageID uint64
 
 	responseMap := &LockedResponseMap{Map: make(map[uint64]ResponseStore)}
@@ -179,4 +192,7 @@ WSLOOP:
 		}
 	}
 	responseMap.L.RUnlock()
+
+	conn.l.Info("[API] Websocket listener finished", zap.String("host", addr))
+	f <- struct{}{}
 }

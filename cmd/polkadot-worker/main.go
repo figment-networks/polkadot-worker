@@ -97,7 +97,8 @@ func main() {
 	defer grpcConn.Close()
 
 	connApi := api.NewConn(logger.GetLogger())
-	go connApi.Run(ctx, "0.0.0.0:9944")
+	go connApi.Run(ctx, cfg.PolkadotNodeAddr)
+
 	indexerClient := createIndexerClient(ctx, logger.GetLogger(), cfg, grpcConn, connApi)
 	go serveGRPC(logger.GetLogger(), *cfg, indexerClient)
 
