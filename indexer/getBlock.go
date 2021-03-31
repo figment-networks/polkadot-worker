@@ -96,9 +96,15 @@ type BlockHeader struct {
 func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response) (height uint64, err error) {
 	conn.Send(ch, RequestFinalizedHead, "chain_getFinalizedHead", nil)
 	resp := <-ch
+	if resp.Error != nil {
+		return 0, fmt.Errorf("response from ws is wrong: %s ", resp.Error)
+	}
 
 	conn.Send(ch, RequestTopHeader, "chain_getHeader", []interface{}{resp.Result})
 	header := <-ch
+	if header.Error != nil {
+		return 0, fmt.Errorf("response from ws is wrong: %s ", resp.Error)
+	}
 
 	bH := &BlockHeader{}
 	s := string(header.Result)
@@ -164,7 +170,11 @@ func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 	for blockHashResp := range ch { // (lukanus): has to die in it's own context
 		i++
 		if blockHashResp.Error != nil {
-			return blockHash, parentHash, grandparentHash, fmt.Errorf("error retrieving data from node: %w  ", err)
+			err = blockHashResp.Error
+			if i == expected {
+				break
+			}
+			continue
 		}
 
 		switch blockHashResp.ID {
@@ -182,7 +192,10 @@ func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 		if i == expected {
 			break
 		}
+	}
 
+	if err != nil {
+		return blockHash, parentHash, grandparentHash, fmt.Errorf("error retrieving data from node: %w  ", err)
 	}
 
 	switch height {
