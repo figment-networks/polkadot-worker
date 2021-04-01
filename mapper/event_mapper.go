@@ -15,7 +15,10 @@ import (
 	"go.uber.org/zap"
 )
 
-var descRegexp = regexp.MustCompile(`\\\[[a-z_, ]*\\\]`)
+var (
+	descRegexp = regexp.MustCompile(`\\\[[a-z_, ]*\\\]`)
+	numRegexp  = regexp.MustCompile(`^[0-9]+$`)
+)
 
 func parseEvents(log *zap.Logger, rawEvents []*eventpb.Event, currency string, divider *big.Float, exp int, nonce string, time *time.Time, height uint64) ([]structs.SubsetEvent, []string, error) {
 	evIndexMap := make(map[int64]struct{})
@@ -161,7 +164,7 @@ func stringifyEventData(data *eventpb.EventData) string {
 	switch char := []rune(val)[0]; char {
 	case '{', '[', '-':
 	default:
-		if _, err := strconv.Atoi(val); err != nil {
+		if ok := numRegexp.MatchString(val); !ok {
 			val = `"` + val + `"`
 		}
 	}
