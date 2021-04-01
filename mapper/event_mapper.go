@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
@@ -162,7 +161,7 @@ func stringifyEventData(data *eventpb.EventData) string {
 	switch char := []rune(val)[0]; char {
 	case '{', '[', '-':
 	default:
-		if !unicode.IsDigit(char) {
+		if _, err := strconv.Atoi(val); err != nil {
 			val = `"` + val + `"`
 		}
 	}
