@@ -483,7 +483,7 @@ func sendTransactionsInRange(ctx context.Context, logger *zap.Logger, client *Cl
 	defer close(errored)
 
 	wg := &sync.WaitGroup{}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go asyncBlockAndTx(ctx, logger, wg, client, chIn)
 	}
