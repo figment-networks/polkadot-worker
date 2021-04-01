@@ -56,6 +56,7 @@ func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest) 
 		RuntimeParent:           ddr.RuntimeParent,
 		CurrentEraParent:        ddr.CurrentEra,
 		NextFeeMultiplierParent: ddr.NextFeeMultipier,
+		Chain:                   ddr.Chain,
 	})
 	if err != nil {
 		rawRequestGRPCDuration.WithLabels("DecodeServiceClient", "ERR").Observe(time.Since(now).Seconds())
