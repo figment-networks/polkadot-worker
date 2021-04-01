@@ -140,12 +140,12 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error 
 			return fmt.Errorf("%d Error while parsing event %s", i, err.Error())
 		}
 
-		attributes[i] = fmt.Sprintf("%v", ev.Data[i])
+		attributes[i] = fmt.Sprintf("{name: %v, value: %v}", ev.Data[i].GetName(), ev.Data[i].GetValue())
 	}
 
 	if dataLen > 0 {
 		for ; i < dataLen; i++ {
-			attributes[i] = fmt.Sprintf("%v", ev.Data[i])
+			attributes[i] = fmt.Sprintf("{name: %v, value: %v}", ev.Data[i].GetName(), ev.Data[i].GetValue())
 		}
 
 		e.Additional = make(map[string][]string)
