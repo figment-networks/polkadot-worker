@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
@@ -140,12 +141,12 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error 
 			return fmt.Errorf("%d Error while parsing event %s", i, err.Error())
 		}
 
-		attributes[i] = fmt.Sprintf("{name: %v, value: %v}", ev.Data[i].GetName(), ev.Data[i].GetValue())
+		attributes[i] = stringifyEventData(ev.Data[i])
 	}
 
 	if dataLen > 0 {
 		for ; i < dataLen; i++ {
-			attributes[i] = fmt.Sprintf("{name: %v, value: %v}", ev.Data[i].GetName(), ev.Data[i].GetValue())
+			attributes[i] = stringifyEventData(ev.Data[i])
 		}
 
 		e.Additional = make(map[string][]string)
@@ -153,6 +154,20 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error 
 	}
 
 	return nil
+}
+
+func stringifyEventData(data *eventpb.EventData) string {
+	val := data.GetValue()
+
+	switch char := []rune(val)[0]; char {
+	case '{', '[', '-':
+	default:
+		if !unicode.IsDigit(char) {
+			val = `"` + val + `"`
+		}
+	}
+
+	return fmt.Sprintf(`{"name": "%v", "value": %v}`, data.GetName(), val)
 }
 
 func getValues(description string) ([]string, error) {
