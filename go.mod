@@ -6,7 +6,7 @@ require (
 	github.com/bearcherian/rollzap v1.0.2
 	github.com/figment-networks/indexer-manager v0.1.4
 	github.com/figment-networks/indexing-engine v0.2.1
-	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210401140400-3a165056de78
+	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210402130639-fc3b92949f66
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/websocket v1.4.2
@@ -15,6 +15,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/rollbar/rollbar-go v1.2.0
 	github.com/stretchr/testify v1.7.0
+	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 	google.golang.org/grpc v1.36.0

@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/utils"
 
@@ -25,10 +26,6 @@ type TransactionMapperTest struct {
 	Exp      int
 	Version  string
 
-	Blocks       []utils.BlockResp
-	Events       [][][]utils.EventsResp
-	Transactions [][]utils.TransactionsResp
-
 	BlockResponse        *blockpb.GetByHeightResponse
 	EventsResponse       *eventpb.GetByHeightResponse
 	TransactionsResponse *transactionpb.GetByHeightResponse
@@ -42,16 +39,10 @@ func (tm *TransactionMapperTest) SetupTest() {
 	tm.Exp = 12
 	tm.Version = "0.0.1"
 
-	height := [2]uint64{123, 321}
-
 	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(tm.Exp)), nil)
 	tm.Divider = new(big.Float).SetFloat64(float64(div.Int64()))
 
-	tm.Blocks = utils.GetBlocksResponses(height)
-	tm.Events = utils.GetEventsResponses(height)
-	tm.Transactions = utils.GetTransactionsResponses(height)
-
-	tm.BlockResponse = utils.BlockResponse(tm.Blocks[0], tm.Transactions[0], tm.Events[0])
+	utils.ReadFile(tm.Suite, "./../utils/block_response.json", &tm.BlockResponse)
 
 	log, err := zap.NewDevelopment()
 	tm.Require().Nil(err)
@@ -84,6 +75,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() 
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
+	tm.BlockResponse.Block.Extrinsics[0].PartialFee = ""
 	tm.BlockResponse.Block.Extrinsics[0].Tip = "bad"
 
 	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse)
@@ -95,13 +87,16 @@ func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
+	var expected []*structs.Transaction
+	utils.ReadFile(tm.Suite, "./../utils/transactions.json", &expected)
+
 	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse)
 
 	tm.Require().Nil(err)
 
-	tm.Require().Len(transactions, 1)
+	tm.Require().Len(transactions, 3)
 
-	utils.ValidateTransactions(&tm.Suite, *transactions[0], tm.Blocks[0], tm.Transactions[0], tm.Events[0][0], tm.ChainID, tm.Currency, int32(tm.Exp))
+	utils.ValidateTransactions(&tm.Suite, *transactions[0], *expected[0])
 }
 
 func TestTransactionMapper(t *testing.T) {

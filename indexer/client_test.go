@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/figment-networks/polkadot-worker/api"
@@ -27,44 +28,25 @@ import (
 	"go.uber.org/zap"
 )
 
-type PolkaClientMock struct {
-}
-
-func (pcm *PolkaClientMock) Send(resp chan api.Response, id uint64, method string, params []interface{}) {
-
-	if id == indexer.RequestTopHeader {
-
-		resp <- api.Response{
-			ID:     id,
-			Type:   method,
-			Result: []byte(`{"number":"0x43970c"}`),
-		}
-		return
-	}
-	resp <- api.Response{
-		ID:     id,
-		Type:   method,
-		Result: []byte(`{"number"}`),
-	}
-}
-
 type IndexerClientTest struct {
 	suite.Suite
-
 	*indexer.Client
 
-	Height       [2]uint64
-	ReqID        uuid.UUID
-	Blocks       []utils.BlockResp
-	Events       [][][]utils.EventsResp
-	Transactions [][]utils.TransactionsResp
+	Height   [2]uint64
+	ChainID  string
+	Currency string
+	Exp      int
+	ReqID    uuid.UUID
+	Version  string
 
-	ChainID     string
-	Currency    string
-	Exp         int
-	Version     string
-	Ctx         context.Context
-	CtxCancel   context.CancelFunc
+	Block        structs.Block
+	Ctx          context.Context
+	CtxCancel    context.CancelFunc
+	Decoded      decodepb.DecodeResponse
+	Ddr          wStructs.DecodeDataRequest
+	Transactions transactions
+
+	PolkaMock   PolkaClientMock
 	ProxyClient *proxyClientMock
 }
 
@@ -77,11 +59,7 @@ func (ic *IndexerClientTest) SetupTest() {
 	ic.Currency = "DOT"
 	ic.Exp = 12
 	ic.Version = "0.0.1"
-	ic.Height = [2]uint64{3941719, 3941720}
-
-	ic.Blocks = utils.GetBlocksResponses(ic.Height)
-	ic.Events = utils.GetEventsResponses(ic.Height)
-	ic.Transactions = utils.GetTransactionsResponses(ic.Height)
+	ic.Height = [2]uint64{4441452, 4441452}
 
 	log, err := zap.NewDevelopment()
 	ic.Require().Nil(err)
@@ -92,8 +70,8 @@ func (ic *IndexerClientTest) SetupTest() {
 	ic.Ctx = ctx
 	ic.CtxCancel = ctxCancel
 
-	pcm := &PolkaClientMock{}
-	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, pcm)
+	ic.PolkaMock = PolkaClientMock{}
+	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, &ic.PolkaMock)
 	ic.ProxyClient = &proxyClientMock
 }
 
@@ -138,7 +116,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_OK() {
 
 	accountBalance, endFounded := false, false
 	for s := range stream.ResponseListener {
-		if ic.ReqID != s.Id {
+		if ic.ReqID.String() != s.Id.String() {
 			continue
 		}
 
@@ -202,7 +180,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_ProxyError() {
 	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
-		if response.Id != ic.ReqID || response.Error.Msg == "" {
+		if response.Id.String() != ic.ReqID.String() || response.Error.Msg == "" {
 			continue
 		}
 
@@ -252,12 +230,12 @@ func (ic *IndexerClientTest) TestGetAccountBalance_MapperError() {
 	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
-		if response.Id != ic.ReqID || response.Error.Msg == "" {
+		if response.Id.String() != ic.ReqID.String() || response.Error.Msg == "" {
 			continue
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Could not send Account Balance: Could not create transaction free amount from value \"bad\"")
+		ic.Require().Contains(response.Error.Msg, "Could not send Account Balance: Could not create transaction free amount from value \"bad\" Could not create big int from value bad")
 		return
 	}
 }
@@ -279,7 +257,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_UnmarshalError() {
 	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
-		if response.Id != ic.ReqID || response.Error.Msg == "" {
+		if response.Id.String() != ic.ReqID.String() || response.Error.Msg == "" {
 			continue
 		}
 
@@ -290,9 +268,8 @@ func (ic *IndexerClientTest) TestGetAccountBalance_UnmarshalError() {
 }
 
 func (ic *IndexerClientTest) TestGetLatest_OK() {
-	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(utils.HeadResponse(int64(ic.Height[1])), nil)
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.Blocks[0], ic.Transactions[0], ic.Events[0]), nil)
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.BlockResponse(ic.Blocks[1], ic.Transactions[1], ic.Events[1]), nil)
+	ic.getLatestRpcResponses()
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr).Return(&ic.Decoded, nil)
 
 	req := structs.LatestDataRequest{
 		LastHeight: ic.Height[0],
@@ -318,9 +295,11 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 
 	ic.Require().Nil(stream.Req(tr))
 
+	transactions := ic.Transactions.Transactions
+
 	countBlock, countTransaction, endFounded := 0, 0, false
 	for s := range stream.ResponseListener {
-		if ic.ReqID != s.Id {
+		if s.Id.String() != ic.ReqID.String() {
 			continue
 		}
 
@@ -330,13 +309,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 			err := json.Unmarshal(s.Payload, &block)
 			ic.Require().Nil(err)
 
-			switch block.Hash {
-			case ic.Blocks[0].Hash:
-				ic.validateBlock(block, ic.Blocks[0])
-				break
-			case ic.Blocks[1].Hash:
-				ic.validateBlock(block, ic.Blocks[1])
-			}
+			ic.validateBlock(block, ic.Block)
 
 			countBlock++
 			break
@@ -346,11 +319,12 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 			ic.Require().Nil(err)
 
 			switch transaction.Hash {
-			case ic.Transactions[0][0].Hash:
-				utils.ValidateTransactions(&ic.Suite, transaction, ic.Blocks[0], ic.Transactions[0], ic.Events[0][0], ic.ChainID, ic.Currency, int32(ic.Exp))
-				break
-			case ic.Transactions[1][0].Hash:
-				utils.ValidateTransactions(&ic.Suite, transaction, ic.Blocks[1], ic.Transactions[1], ic.Events[1][0], ic.ChainID, ic.Currency, int32(ic.Exp))
+			case transactions[0].Hash:
+				utils.ValidateTransactions(&ic.Suite, transaction, transactions[0])
+			case transactions[1].Hash:
+				utils.ValidateTransactions(&ic.Suite, transaction, transactions[1])
+			case transactions[2].Hash:
+				utils.ValidateTransactions(&ic.Suite, transaction, transactions[2])
 			}
 
 			countTransaction++
@@ -360,13 +334,14 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 			endFounded = true
 		}
 
-		if countBlock == 2 && countTransaction == 2 && endFounded {
+		if countBlock == 1 && countTransaction == 3 && endFounded {
 			break
 		}
 	}
 }
 
 func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
+	ic.getLatestRpcResponses()
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
 		Type:    structs.ReqIDLatestData,
@@ -383,7 +358,7 @@ func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
 	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
-		if response.Id != ic.ReqID || response.Error.Msg == "" {
+		if response.Id.String() != ic.ReqID.String() || response.Error.Msg == "" {
 			continue
 		}
 
@@ -393,9 +368,10 @@ func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
 	}
 }
 
-func (ic *IndexerClientTest) TestGetLatest_HeadResponseError() {
-	e := errors.New("new head error")
-	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(&chainpb.GetHeadResponse{}, e)
+func (ic *IndexerClientTest) TestGetLatest_DecodeDataError() {
+	ic.getLatestRpcResponses()
+	e := errors.New("new decode error")
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr).Return(&decodepb.DecodeResponse{}, e)
 
 	req := structs.LatestDataRequest{
 		LastHeight: uint64(ic.Height[0]),
@@ -422,21 +398,19 @@ func (ic *IndexerClientTest) TestGetLatest_HeadResponseError() {
 	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
-		if response.Id != ic.ReqID || response.Error.Msg == "" {
+		fmt.Printf("payload: %v\n", response.Payload)
+		if response.Id.String() != ic.ReqID.String() || response.Error.Msg == "" {
 			continue
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Could not fetch head from proxy: new head error")
+		ic.Require().Contains(response.Error.Msg, "error while decoding data: new decode error")
 		return
 	}
 }
 
-func (ic *IndexerClientTest) TestGetLatest_BlockResponseError2() {
-	ic.ProxyClient.On("GetHead", mock.AnythingOfType("*context.cancelCtx")).Return(utils.HeadResponse(int64(ic.Height[0])), nil)
-
-	e := errors.New("new block error")
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(&blockpb.GetByHeightResponse{}, e)
+func (ic *IndexerClientTest) TestGetLatest_GetLatestHeightError() {
+	ic.getRpcResponses()
 
 	req := structs.LatestDataRequest{
 		LastHeight: uint64(ic.Height[0]),
@@ -463,19 +437,19 @@ func (ic *IndexerClientTest) TestGetLatest_BlockResponseError2() {
 	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
-		if response.Id != ic.ReqID || response.Error.Msg == "" {
+		if response.Id.String() != ic.ReqID.String() || response.Error.Msg == "" {
 			continue
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Error while getting Transactions with given range: new block error")
+		ic.Require().Contains(response.Error.Msg, "Could not fetch head from proxy: json: cannot unmarshal string into Go value of type indexer.BlockHeader")
 		return
 	}
 }
 
 func (ic *IndexerClientTest) TestGetTransactions_OK() {
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.Blocks[0], ic.Transactions[0], ic.Events[0]), nil)
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(utils.BlockResponse(ic.Blocks[1], ic.Transactions[1], ic.Events[1]), nil)
+	ic.getRpcResponses()
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr).Return(&ic.Decoded, nil)
 
 	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
@@ -496,11 +470,15 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
+	fmt.Printf("TestGetTransactions_OK: %s %s", ic.ReqID, stream.StreamID)
+
 	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
 	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
 	defer ic.CtxCancel()
 
 	ic.Require().Nil(stream.Req(tr))
+
+	transactions := ic.Transactions.Transactions
 
 	countBlock, countTransaction, endFounded := 0, 0, false
 	for s := range stream.ResponseListener {
@@ -514,13 +492,7 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 			err := json.Unmarshal(s.Payload, &block)
 			ic.Require().Nil(err)
 
-			switch block.Hash {
-			case ic.Blocks[0].Hash:
-				ic.validateBlock(block, ic.Blocks[0])
-				break
-			case ic.Blocks[1].Hash:
-				ic.validateBlock(block, ic.Blocks[1])
-			}
+			ic.validateBlock(block, ic.Block)
 
 			countBlock++
 			break
@@ -531,12 +503,14 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 			ic.Require().Nil(err)
 
 			switch transaction.Hash {
-			case ic.Transactions[0][0].Hash:
-				utils.ValidateTransactions(&ic.Suite, transaction, ic.Blocks[0], ic.Transactions[0], ic.Events[0][0], ic.ChainID, ic.Currency, int32(ic.Exp))
-				break
-			case ic.Transactions[1][0].Hash:
-				utils.ValidateTransactions(&ic.Suite, transaction, ic.Blocks[1], ic.Transactions[1], ic.Events[1][0], ic.ChainID, ic.Currency, int32(ic.Exp))
+			case transactions[0].Hash:
+				utils.ValidateTransactions(&ic.Suite, transaction, transactions[0])
+			case transactions[1].Hash:
+				utils.ValidateTransactions(&ic.Suite, transaction, transactions[1])
+			case transactions[2].Hash:
+				utils.ValidateTransactions(&ic.Suite, transaction, transactions[2])
 			}
+
 			countTransaction++
 			break
 
@@ -545,8 +519,8 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 			ic.Require().True(s.Final)
 		}
 
-		if endFounded && countBlock == 2 && countTransaction == 2 {
-			break
+		if endFounded && countBlock == 1 && countTransaction == 3 {
+			return
 		}
 	}
 }
@@ -561,6 +535,8 @@ func (ic *IndexerClientTest) TestGetTransactions_HeightRangeUnmarshalError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
+	fmt.Printf("TestGetTransactions_HeightRangeUnmarshalError: %s %s", ic.ReqID, stream.StreamID)
+
 	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
 	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
 	defer ic.CtxCancel()
@@ -568,7 +544,7 @@ func (ic *IndexerClientTest) TestGetTransactions_HeightRangeUnmarshalError() {
 	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
-		if response.Id != ic.ReqID || response.Error.Msg == "" {
+		if response.Id.String() != ic.ReqID.String() || response.Error.Msg == "" {
 			continue
 		}
 
@@ -578,11 +554,11 @@ func (ic *IndexerClientTest) TestGetTransactions_HeightRangeUnmarshalError() {
 	}
 }
 
-func (ic *IndexerClientTest) TestGetTransactions_GetBlockByHeightError() {
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.BlockResponse(ic.Blocks[0], ic.Transactions[0], ic.Events[0]), nil)
+func (ic *IndexerClientTest) TestGetTransactions_DecodeDataError() {
+	ic.getRpcResponses()
 
-	e := errors.New("new block error")
-	ic.ProxyClient.On("GetBlockByHeight", mock.AnythingOfType("*context.cancelCtx"), ic.Height[1]).Return(&blockpb.GetByHeightResponse{}, e)
+	e := errors.New("new decode error")
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr).Return(&decodepb.DecodeResponse{}, e)
 
 	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
@@ -603,6 +579,8 @@ func (ic *IndexerClientTest) TestGetTransactions_GetBlockByHeightError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
+	fmt.Printf("TestGetTransactions_DecodeDataError: %s %s", ic.ReqID, stream.StreamID)
+
 	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
 	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
 	defer ic.CtxCancel()
@@ -610,20 +588,21 @@ func (ic *IndexerClientTest) TestGetTransactions_GetBlockByHeightError() {
 	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
-		if response.Id != ic.ReqID || response.Error.Msg == "" {
+		if response.Id.String() != ic.ReqID.String() || response.Error.Msg == "" {
 			continue
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: new block error")
+		ic.Require().Contains(response.Error.Msg, "error while decoding data: new decode error")
 		return
 	}
 }
 
 func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
-	ic.Transactions[0][0].Fee = "bad"
+	ic.getRpcResponses()
+	ic.Decoded.Block.Block.Extrinsics[0].PartialFee = "bad"
 
-	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Height[0]).Return(utils.MetaResponse(ic.Metas[0]), nil)
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr).Return(&ic.Decoded, nil)
 
 	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
@@ -651,20 +630,60 @@ func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
-		if response.Id != ic.ReqID || response.Error.Msg == "" {
+		if response.Id.String() != ic.ReqID.String() || response.Error.Msg == "" {
 			continue
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Error while sending Transactions with given range: Could not parse transaction partial fee \"bad\"")
+		ic.Require().Contains(response.Error.Msg, "error while mapping transactions: Could not parse transaction partial fee \"bad\"")
 		return
 	}
 }
 
-func (ic *IndexerClientTest) validateBlock(block structs.Block, resp utils.BlockResp) {
-	ic.Require().EqualValues(resp.Height, block.Height)
-	ic.Require().Equal(resp.Hash, block.Hash)
-	ic.Require().Equal(resp.Time.Seconds, block.Time.Unix())
+type rpcResponses struct {
+	Responses []api.Response
+}
+
+type transactions struct {
+	Transactions []structs.Transaction
+}
+
+type PolkaClientMock struct {
+	rpcResp rpcResponses
+	rCount  int
+}
+
+func (pcm *PolkaClientMock) Send(resp chan api.Response, id uint64, method string, params []interface{}) {
+	response := pcm.rpcResp.Responses[pcm.rCount]
+	resp <- api.Response{
+		ID:     id,
+		Type:   response.Type,
+		Result: response.Result,
+	}
+	pcm.rCount++
+}
+
+func (ic *IndexerClientTest) getRpcResponses() {
+	utils.ReadFile(ic.Suite, "./../utils/rpc_responses.json", &ic.PolkaMock.rpcResp)
+	ic.getDecodedData()
+}
+
+func (ic *IndexerClientTest) getLatestRpcResponses() {
+	utils.ReadFile(ic.Suite, "./../utils/rpc_responses_get_latest.json", &ic.PolkaMock.rpcResp)
+	ic.getDecodedData()
+}
+
+func (ic *IndexerClientTest) getDecodedData() {
+	utils.ReadFile(ic.Suite, "./../utils/ddr.json", &ic.Ddr)
+	utils.ReadFile(ic.Suite, "./../utils/decoded.json", &ic.Decoded)
+	utils.ReadFile(ic.Suite, "./../utils/block-0.json", &ic.Block)
+	utils.ReadFile(ic.Suite, "./../utils/block-0-transactions.json", &ic.Transactions)
+}
+
+func (ic *IndexerClientTest) validateBlock(block, expected structs.Block) {
+	ic.Require().EqualValues(expected.Height, block.Height)
+	ic.Require().Equal(expected.Hash, block.Hash)
+	ic.Require().Equal(expected.Time.Unix(), block.Time.Unix())
 }
 
 func TestIndexerClient(t *testing.T) {

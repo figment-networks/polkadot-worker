@@ -109,6 +109,8 @@ func outRespDrain(c chan cStructs.OutResp) {
 }
 
 type getBlockPool struct {
+	reconnect chan bool
+
 	stor chan chan api.Response
 	lock *sync.Mutex
 }

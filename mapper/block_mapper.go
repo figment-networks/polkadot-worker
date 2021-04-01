@@ -9,7 +9,7 @@ import (
 )
 
 // BlockMapper maps polkadothub-proxy Block to indexer-manager Block
-func BlockMapper(block *blockpb.GetByHeightResponse, chainID, epoch string, numberOfTransactions uint64) (*structs.Block, error) {
+func BlockMapper(block *blockpb.GetByHeightResponse, chainID, epoch string) (*structs.Block, error) {
 	timer := metrics.NewTimer(conversionDuration.WithLabels("block"))
 	defer timer.ObserveDuration()
 
@@ -17,14 +17,12 @@ func BlockMapper(block *blockpb.GetByHeightResponse, chainID, epoch string, numb
 		return nil, errors.New("Empty block response")
 	}
 
-	time := block.Block.Header.Time.AsTime()
-
 	return &structs.Block{
 		ChainID:              chainID,
 		Epoch:                epoch,
 		Hash:                 block.Block.BlockHash,
 		Height:               uint64(block.Block.Header.Height),
-		NumberOfTransactions: numberOfTransactions,
-		Time:                 time,
+		NumberOfTransactions: uint64(len(block.Block.Extrinsics)),
+		Time:                 block.Block.Header.Time.AsTime(),
 	}, nil
 }

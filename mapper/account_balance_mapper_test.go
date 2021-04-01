@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/figment-networks/polkadot-worker/mapper"
+
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/stretchr/testify/suite"
 )
