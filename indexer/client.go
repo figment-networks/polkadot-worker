@@ -113,7 +113,7 @@ func (c *Client) RegisterStream(ctx context.Context, stream *cStructs.StreamAcce
 	defer c.sLock.Unlock()
 	c.streams[stream.StreamID] = stream
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 30; i++ {
 		go c.Run(ctx, stream)
 	}
 
@@ -483,7 +483,7 @@ func sendTransactionsInRange(ctx context.Context, logger *zap.Logger, client *Cl
 	defer close(errored)
 
 	wg := &sync.WaitGroup{}
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 15; i++ {
 		wg.Add(1)
 		go asyncBlockAndTx(ctx, logger, wg, client, chIn)
 	}
