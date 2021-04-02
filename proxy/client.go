@@ -21,8 +21,8 @@ import (
 
 // Client connecting to polkadot-proxy
 type Client struct {
-	log *zap.Logger
-
+	log         *zap.Logger
+	conn        *GRPConnections
 	rateLimiter *rate.Limiter
 
 	AccountClient     accountpb.AccountServiceClient
@@ -34,21 +34,26 @@ type Client struct {
 }
 
 // NewClient is a polkadot-proxy Client constructor
-func NewClient(log *zap.Logger, rl *rate.Limiter, conn *grpc.ClientConn) *Client {
+func NewClient(log *zap.Logger, rl *rate.Limiter, conns *GRPConnections) *Client {
+
 	return &Client{log: log,
 		rateLimiter:       rl,
-		AccountClient:     accountpb.NewAccountServiceClient(conn),
-		BlockClient:       blockpb.NewBlockServiceClient(conn),
-		ChainClient:       chainpb.NewChainServiceClient(conn),
-		EventClient:       eventpb.NewEventServiceClient(conn),
-		TransactionClient: transactionpb.NewTransactionServiceClient(conn),
-		DecodeClient:      decodepb.NewDecodeServiceClient(conn)}
+		conn:              conns,
+		AccountClient:     conns.GetNextAccountClient(),
+		BlockClient:       conns.GetNextBlockClient(),
+		ChainClient:       conns.GetNextChainClient(),
+		EventClient:       conns.GetNextEventServiceClient(),
+		TransactionClient: conns.GetNextTransactionServiceClient(),
+		DecodeClient:      conns.GetNextDecodeServiceClient(),
+	}
 }
 
 // GetAccountBalance return Account Balance by provided height
 func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest) (*decodepb.DecodeResponse, error) {
 	now := time.Now()
-	res, err := c.DecodeClient.Decode(ctx, &decodepb.DecodeRequest{
+
+	dc := c.conn.GetNextDecodeServiceClient()
+	res, err := dc.Decode(ctx, &decodepb.DecodeRequest{
 		MetadataParent:          ddr.MetadataParent,
 		Block:                   ddr.Block,
 		BlockHash:               ddr.BlockHash,
@@ -79,8 +84,8 @@ func (c *Client) GetAccountBalance(ctx context.Context, account string, height u
 	}
 
 	now := time.Now()
-
-	res, err := c.AccountClient.GetByHeight(ctx, &accountpb.GetByHeightRequest{Height: int64(height), Address: account})
+	ac := c.conn.GetNextAccountClient()
+	res, err := ac.GetByHeight(ctx, &accountpb.GetByHeightRequest{Height: int64(height), Address: account})
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting account balance by height: %d", height)
 		rawRequestGRPCDuration.WithLabels("GetAccountBalanceByHeight", "ERR").Observe(time.Since(now).Seconds())
@@ -105,7 +110,8 @@ func (c *Client) GetBlockByHeight(ctx context.Context, height uint64) (*blockpb.
 	}
 
 	now := time.Now()
-	res, err := c.BlockClient.GetByHeight(ctx, &blockpb.GetByHeightRequest{Height: int64(height)}, grpc.WaitForReady(true))
+	bc := c.conn.GetNextBlockClient()
+	res, err := bc.GetByHeight(ctx, &blockpb.GetByHeightRequest{Height: int64(height)}, grpc.WaitForReady(true))
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting block by height: %d", height)
 		rawRequestGRPCDuration.WithLabels("GetBlockByHeight", "ERR").Observe(time.Since(now).Seconds())
@@ -130,7 +136,8 @@ func (c *Client) GetEventsByHeight(ctx context.Context, height uint64) (*eventpb
 	}
 
 	now := time.Now()
-	res, err := c.EventClient.GetByHeight(ctx, &eventpb.GetByHeightRequest{Height: int64(height)}, grpc.WaitForReady(true))
+	ec := c.conn.GetNextEventServiceClient()
+	res, err := ec.GetByHeight(ctx, &eventpb.GetByHeightRequest{Height: int64(height)}, grpc.WaitForReady(true))
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting event by height: %d", height)
 		rawRequestGRPCDuration.WithLabels("GetEventsByHeight", "ERR").Observe(time.Since(now).Seconds())
@@ -156,7 +163,8 @@ func (c *Client) GetMetaByHeight(ctx context.Context, height uint64) (*chainpb.G
 
 	now := time.Now()
 
-	res, err := c.ChainClient.GetMetaByHeight(ctx, &chainpb.GetMetaByHeightRequest{Height: int64(height)})
+	cc := c.conn.GetNextChainClient()
+	res, err := cc.GetMetaByHeight(ctx, &chainpb.GetMetaByHeightRequest{Height: int64(height)})
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting meta by height: %d", height)
 		rawRequestGRPCDuration.WithLabels("GetMetaByHeight", "ERR").Observe(time.Since(now).Seconds())
@@ -177,7 +185,8 @@ func (c *Client) GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error) 
 
 	now := time.Now()
 
-	res, err := c.ChainClient.GetHead(ctx, &chainpb.GetHeadRequest{})
+	cc := c.conn.GetNextChainClient()
+	res, err := cc.GetHead(ctx, &chainpb.GetHeadRequest{})
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting head")
 		rawRequestGRPCDuration.WithLabels("GetHead", "ERR").Observe(time.Since(now).Seconds())
@@ -207,7 +216,8 @@ func (c *Client) GetTransactionsByHeight(ctx context.Context, height uint64) (*t
 
 	now := time.Now()
 
-	res, err := c.TransactionClient.GetByHeight(ctx, req)
+	tc := c.conn.GetNextTransactionServiceClient()
+	res, err := tc.GetByHeight(ctx, req)
 	if err != nil {
 		err = errors.Wrapf(err, "Error while getting transaction by height: %d", height)
 		rawRequestGRPCDuration.WithLabels("GetTransactionsByHeight", err.Error()).Observe(time.Since(now).Seconds())

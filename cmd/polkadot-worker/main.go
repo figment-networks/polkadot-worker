@@ -84,17 +84,20 @@ func main() {
 
 	registerWorker(ctx, logger.GetLogger(), cfg)
 
-	grpcConn, err := grpc.DialContext(
-		ctx,
-		cfg.PolkadotProxyAddr,
-		grpc.WithInsecure(),
-		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
-	)
-	if err != nil {
-		log.Fatal("Error while creating connection to polkadot-proxy", zap.Error(err))
+	ngc := proxy.NewGRPConnections()
+	defer ngc.Close()
 
+	polkaProxies := strings.Split(cfg.PolkadotProxyAddr, ",")
+	for _, pp := range polkaProxies {
+		grpcConn, err := grpc.DialContext(ctx, pp, grpc.WithInsecure(),
+			grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
+		)
+		if err != nil {
+			log.Fatal("Error while creating connection to polkadot-proxy", zap.Error(err))
+
+		}
+		ngc.Add(grpcConn)
 	}
-	defer grpcConn.Close()
 
 	connApi := api.NewConn(logger.GetLogger())
 
@@ -103,7 +106,7 @@ func main() {
 		go connApi.Run(ctx, address)
 	}
 
-	indexerClient := createIndexerClient(ctx, logger.GetLogger(), cfg, grpcConn, connApi)
+	indexerClient := createIndexerClient(ctx, logger.GetLogger(), cfg, ngc, connApi)
 	go serveGRPC(logger.GetLogger(), *cfg, indexerClient)
 
 	mux := http.NewServeMux()
@@ -135,9 +138,9 @@ func getConfig(path string) (cfg *config.Config, err error) {
 	return cfg, nil
 }
 
-func createIndexerClient(ctx context.Context, log *zap.Logger, cfg *config.Config, conn *grpc.ClientConn, connApi *api.Conn) *indexer.Client {
+func createIndexerClient(ctx context.Context, log *zap.Logger, cfg *config.Config, conns *proxy.GRPConnections, connApi *api.Conn) *indexer.Client {
 	rateLimiter := rate.NewLimiter(rate.Limit(cfg.ReqPerSecond), cfg.ReqPerSecond)
-	proxyClient := proxy.NewClient(log, rateLimiter, conn)
+	proxyClient := proxy.NewClient(log, rateLimiter, conns)
 
 	return indexer.NewClient(log, proxyClient, cfg.Exp, uint64(cfg.MaximumHeightsToGet), cfg.ChainID, cfg.Currency, connApi)
 }

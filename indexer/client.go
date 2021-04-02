@@ -113,7 +113,7 @@ func (c *Client) RegisterStream(ctx context.Context, stream *cStructs.StreamAcce
 	defer c.sLock.Unlock()
 	c.streams[stream.StreamID] = stream
 
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 40; i++ {
 		go c.Run(ctx, stream)
 	}
 
@@ -145,7 +145,7 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 		case taskRequest := <-stream.RequestListener:
 			c.log.Debug("Received task request", zap.Stringer("taskID", taskRequest.Id), zap.String("type", taskRequest.Type))
 
-			ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Minute)
+			ctxWithTimeout, cancel := context.WithTimeout(ctx, 40*time.Minute)
 			defer cancel()
 
 			switch taskRequest.Type {
@@ -517,7 +517,7 @@ RANGE_LOOP:
 					errored <- true // (lukanus): to close publisher and asyncBlockAndTx
 					err = resp.Error
 					out <- resp
-					break RANGE_LOOP
+					break INNER_LOOP
 				default:
 					out <- resp
 				}
@@ -579,6 +579,7 @@ func populateRange(in, out chan hBTx, hr structs.HeightRange, er chan bool) {
 		}
 
 	}
+	close(in)
 }
 
 func (c *Client) asyncBlockAndTx(ctx context.Context, logger *zap.Logger, wg *sync.WaitGroup, cinn <-chan hBTx) {
