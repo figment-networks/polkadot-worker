@@ -6,17 +6,18 @@ import (
 	"testing"
 
 	"github.com/figment-networks/polkadot-worker/proxy"
-	"golang.org/x/time/rate"
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/decode/decodepb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 )
 
@@ -28,6 +29,7 @@ type BlockClientTest struct {
 	AccountClientMock     *accountClientMock
 	BlockClientMock       *blockClientMock
 	ChainClientMock       *chainClientMock
+	DecodeClientMock      *decodeClientMock
 	EventClientMock       *eventClientMock
 	TransactionClientMock *transactionClientMock
 }
@@ -43,13 +45,20 @@ func (bc *BlockClientTest) SetupTest() {
 		rateLimiter,
 		nil,
 	)
-	/*
-		bc.AccountClientMock = &accountClientMock
-		bc.BlockClientMock = &blockClientMock
-		bc.ChainClientMock = &chainClientMock
-		bc.EventClientMock = &eventClientMock
-		bc.TransactionClientMock = &transactionClientMock
-	*/
+
+	bc.AccountClientMock = &accountClientMock{}
+	bc.BlockClientMock = &blockClientMock{}
+	bc.ChainClientMock = &chainClientMock{}
+	bc.DecodeClientMock = &decodeClientMock{}
+	bc.EventClientMock = &eventClientMock{}
+	bc.TransactionClientMock = &transactionClientMock{}
+
+	bc.Client.AccountClient = bc.AccountClientMock
+	bc.Client.BlockClient = bc.BlockClientMock
+	bc.Client.ChainClient = bc.ChainClientMock
+	bc.Client.DecodeClient = bc.DecodeClientMock
+	bc.Client.EventClient = bc.EventClientMock
+	bc.Client.TransactionClient = bc.TransactionClientMock
 }
 
 func (bc *BlockClientTest) TestGetBlockByHeight_OK() {
@@ -305,6 +314,15 @@ func (m chainClientMock) GetStatus(ctx context.Context, in *chainpb.GetStatusReq
 func (m chainClientMock) GetMetaByHeight(ctx context.Context, in *chainpb.GetMetaByHeightRequest, opts ...grpc.CallOption) (*chainpb.GetMetaByHeightResponse, error) {
 	args := m.Called(ctx, in, opts)
 	return args.Get(0).(*chainpb.GetMetaByHeightResponse), args.Error(1)
+}
+
+type decodeClientMock struct {
+	mock.Mock
+}
+
+func (m decodeClientMock) Decode(ctx context.Context, in *decodepb.DecodeRequest, opts ...grpc.CallOption) (*decodepb.DecodeResponse, error) {
+	args := m.Called(ctx, in, opts)
+	return args.Get(0).(*decodepb.DecodeResponse), args.Error(1)
 }
 
 type eventClientMock struct {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/utils"
+	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -12,38 +13,35 @@ import (
 type BlockMapperTest struct {
 	suite.Suite
 
-	ChainID              string
-	Epoch                string
-	Height               uint64
-	NumberOfTransactions uint64
+	ChainID string
+	Epoch   string
 
-	BlockResponse []utils.BlockResp
+	BlockResponse *blockpb.GetByHeightResponse
 }
 
 func (t *BlockMapperTest) SetupTest() {
 	t.ChainID = "Polkadot"
 	t.Epoch = "320"
-	t.Height = 120
-	t.NumberOfTransactions = 3
 
-	t.BlockResponse = utils.GetBlocksResponses([2]uint64{t.Height, 4576})
+	utils.ReadFile(t.Suite, "./../utils/block_response.json", &t.BlockResponse)
 }
 
 func (t *BlockMapperTest) TestBlockMapper_OK() {
-	block, err := mapper.BlockMapper(utils.BlockResponse(t.BlockResponse[0], nil, nil), t.ChainID, t.Epoch, t.NumberOfTransactions)
+	block, err := mapper.BlockMapper(t.BlockResponse, t.ChainID, t.Epoch)
 
 	t.Require().Nil(err)
 
+	blResp := t.BlockResponse.Block
 	t.Require().Equal(t.ChainID, block.ChainID)
 	t.Require().Equal(t.Epoch, block.Epoch)
-	t.Require().Equal(t.BlockResponse[0].Hash, block.Hash)
-	t.Require().EqualValues(t.Height, block.Height)
-	t.Require().Equal(t.NumberOfTransactions, block.NumberOfTransactions)
-	t.Require().Equal(t.BlockResponse[0].Time.Seconds, block.Time.Unix())
+	t.Require().Equal(blResp.BlockHash, block.Hash)
+	t.Require().Equal(uint64(blResp.Header.Height), block.Height)
+	t.Require().EqualValues(len(blResp.Extrinsics), block.NumberOfTransactions)
+	t.Require().Equal(blResp.Header.Time.Seconds, block.Time.Unix())
 }
 
 func (t *BlockMapperTest) TestBlockMapper_Error() {
-	block, err := mapper.BlockMapper(nil, t.ChainID, t.Epoch, t.NumberOfTransactions)
+	block, err := mapper.BlockMapper(nil, t.ChainID, t.Epoch)
 
 	t.Require().Nil(block)
 	t.Require().NotNil(err)

@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadot-worker/api"
 	"github.com/figment-networks/polkadot-worker/mapper"
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
+
+	"github.com/figment-networks/indexer-manager/structs"
 
 	"go.uber.org/zap"
 )
@@ -44,7 +45,7 @@ const PolkadotTypeNextFeeMultiplier = "0x3f1467a096bcd71a5b6a0c8155e208103f2edf3
 // PolkadotTypeCurrentEra is literally  `xxhash("Staking",128) + xxhash("CurrentEra",128)`
 const PolkadotTypeCurrentEra = "0x5f3e4907f716ac89b6347d15ececedca0b6a45321efae92aea15e0740ec7afe7"
 
-func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint64) (block *structs.Block, transactions []*structs.Transaction, err error) {
+func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint64) (block *structs.Block, transactions []*structs.Transaction, err error) {
 	now := time.Now()
 	ch := c.gbPool.Get()
 	defer c.gbPool.Put(ch)
@@ -69,19 +70,19 @@ func blockAndTx(ctx context.Context, logger *zap.Logger, c *Client, height uint6
 
 	resp, err := c.proxy.DecodeData(ctx, ddr)
 	if err != nil {
-		return nil, nil, err
-	}
-	numberOfTransactions := uint64(len(resp.Block.Block.Extrinsics))
-	if block, err = mapper.BlockMapper(resp.Block, c.chainID, resp.Epoch, numberOfTransactions); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("error while decoding data: %w", err)
 	}
 
-	if numberOfTransactions == 0 {
+	if block, err = mapper.BlockMapper(resp.Block, c.chainID, resp.Epoch); err != nil {
+		return nil, nil, fmt.Errorf("error while mapping block: %w", err)
+	}
+
+	if len(resp.Block.Block.Extrinsics) == 0 {
 		return block, nil, nil
 	}
 
 	if transactions, err = c.trMapper.TransactionsMapper(c.log, resp.Block); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("error while mapping transactions: %w", err)
 	}
 
 	logger.Debug("Finished ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
@@ -119,8 +120,8 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 	n.SetString(numberStr, 16)
 	height = n.Uint64()
 
-	blockHash := string(resp.Result[1 : len(resp.Result)-1])
 	if err == nil {
+		blockHash := string(resp.Result[1 : len(resp.Result)-1])
 		cache.BlockHashCacheLock.Lock()
 		cache.BlockHashCache.Add(height, blockHash)
 		cache.BlockHashCacheLock.Unlock()

@@ -15,7 +15,6 @@ import (
 	"github.com/figment-networks/polkadot-worker/cmd/polkadot-worker/logger"
 	"github.com/figment-networks/polkadot-worker/indexer"
 	"github.com/figment-networks/polkadot-worker/proxy"
-	"golang.org/x/time/rate"
 
 	"github.com/figment-networks/indexer-manager/worker/connectivity"
 	grpcIndexer "github.com/figment-networks/indexer-manager/worker/transport/grpc"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 )
 
