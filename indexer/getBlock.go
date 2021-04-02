@@ -18,6 +18,7 @@ import (
 
 const (
 	RequestBlockHash = iota + 1
+	RequestSystemChain
 	RequestFinalizedHead
 	RequestTopHeader
 	RequestParentBlockHash
@@ -117,9 +118,11 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 	n := new(big.Int)
 	n.SetString(numberStr, 16)
 	height = n.Uint64()
+
+	blockHash := string(resp.Result[1 : len(resp.Result)-1])
 	if err == nil {
 		cache.BlockHashCacheLock.Lock()
-		cache.BlockHashCache.Add(height, resp.Result)
+		cache.BlockHashCache.Add(height, blockHash)
 		cache.BlockHashCacheLock.Unlock()
 	}
 	return height, err
@@ -214,6 +217,7 @@ func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 
 func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn PolkaClient, ch chan api.Response) (ddr wStructs.DecodeDataRequest, err error) {
 
+	conn.Send(ch, RequestSystemChain, "system_chain", []interface{}{})
 	conn.Send(ch, RequestBlock, "chain_getBlock", []interface{}{blockHash})
 
 	conn.Send(ch, RequestTimestamp, "state_getStorage", []interface{}{PolkadotTypeTimeNow, blockHash})
@@ -230,7 +234,7 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 	var i uint8
 	for res := range ch {
 		if res.Error != nil {
-			if i == 6 {
+			if i == 7 {
 				err = res.Error
 				break
 			}
@@ -238,6 +242,9 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 			continue
 		}
 		switch res.Type { // (lukanus): the []]byte(s[1 : len(s)-1])  is cutting out the quotes
+		case "system_chain":
+			s := string(res.Result)
+			ddr.Chain = s[1 : len(s)-1]
 		case "chain_getBlock":
 			s := string(res.Result)
 			ddr.Block = []byte(s[1 : len(s)-1])
@@ -264,7 +271,7 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 			}
 		}
 
-		if i == 6 {
+		if i == 7 {
 			break
 		}
 		i++

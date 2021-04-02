@@ -167,6 +167,9 @@ func (m *TransactionMapper) getTransactionFee(partialFeeStr, tipStr string) ([]s
 		return nil, errors.New("Could not count currency amount")
 	}
 
+	if len(amount.Bits()) == 0 {
+		return nil, nil
+	}
 	return []structs.TransactionAmount{{
 		Text:     fmt.Sprintf("%s%s", textAmount.Text('f', -1), m.currency),
 		Currency: m.currency,

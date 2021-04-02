@@ -2,6 +2,7 @@ package structs
 
 type DecodeDataRequest struct {
 	Block            []byte
+	Chain            string
 	BlockHash        string
 	Events           []byte
 	Timestamp        []byte
