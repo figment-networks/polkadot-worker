@@ -189,7 +189,8 @@ func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 		case RequestBlockHash:
 			blockHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
 			cache.BlockHashCacheLock.Lock()
-			cache.BlockHashCache.Add(height, blockHash)
+			bh := blockHash
+			cache.BlockHashCache.Add(height, bh)
 			cache.BlockHashCacheLock.Unlock()
 		case RequestParentBlockHash:
 			parentHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
