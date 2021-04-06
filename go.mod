@@ -10,6 +10,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/websocket v1.4.2
+	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/itering/scale.go v1.0.13
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/pkg/errors v0.9.1

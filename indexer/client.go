@@ -22,7 +22,7 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/decode/decodepb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
-	"github.com/golang/groupcache/lru"
+	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -86,7 +86,10 @@ func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint
 	getAccountBalanceDuration = endpointDuration.WithLabels("getAccountBalance")
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
-
+	newLru, err := lru.New(3000)
+	if err != nil {
+		panic(fmt.Errorf("cache cannot be defined: %w", err)) // we really need to fatal here. this should not happen.
+	}
 	return &Client{
 		chainID:         chainID,
 		currency:        currency,
@@ -94,7 +97,7 @@ func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint
 		maxHeightsToGet: maxHeightsToGet,
 		gbPool:          NewGetBlockPool(300),
 		Cache: &ClientCache{
-			BlockHashCache: lru.New(3000),
+			BlockHashCache: newLru,
 		},
 		log:        log,
 		proxy:      proxy,
