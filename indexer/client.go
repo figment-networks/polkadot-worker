@@ -423,22 +423,8 @@ SendLoop:
 			if !ok {
 				break SendLoop
 			}
-			if t.Type == "Error" {
-				if err := stream.Send(cStructs.TaskResponse{
-					Id:   id,
-					Type: "Error",
-					Error: cStructs.TaskError{
-						Msg: t.Error.Error(),
-					},
-					Order: order,
-					Final: true,
-				}); err != nil {
-					c.log.Error("Error while sending error response %w", zap.Error(err))
-				}
-				return
-			}
 
-			c.sendResp(id, t.Type, t.Payload, order, stream)
+			c.sendResp(id, t.Type, t.Error, t.Payload, order, stream)
 			order++
 		}
 	}
@@ -460,17 +446,27 @@ SendLoop:
 	}
 }
 
-func (c *Client) sendResp(id uuid.UUID, taskType string, payload interface{}, order uint64, stream *cStructs.StreamAccess) {
+func (c *Client) sendResp(id uuid.UUID, taskType string, err error, payload interface{}, order uint64, stream *cStructs.StreamAccess) {
 	var buffer bytes.Buffer
 	enc := json.NewEncoder(&buffer)
 	if err := enc.Encode(payload); err != nil {
 		c.log.Error("Cannot encode payload %w", zap.Error(err))
 	}
 
+	var errMsg string
+	isErr := err != nil
+	if isErr {
+		errMsg = err.Error()
+	}
+
 	tr := cStructs.TaskResponse{
-		Id:      id,
-		Type:    taskType,
-		Order:   order,
+		Id:    id,
+		Type:  taskType,
+		Order: order,
+		Error: cStructs.TaskError{
+			Msg: errMsg,
+		},
+		Final:   isErr,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
