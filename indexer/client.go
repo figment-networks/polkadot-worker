@@ -425,6 +425,10 @@ SendLoop:
 			}
 
 			c.sendResp(id, t.Type, t.Error, t.Payload, order, stream)
+
+			if t.Error != nil {
+				break SendLoop
+			}
 			order++
 		}
 	}
@@ -453,23 +457,18 @@ func (c *Client) sendResp(id uuid.UUID, taskType string, err error, payload inte
 		c.log.Error("Cannot encode payload %w", zap.Error(err))
 	}
 
-	var errMsg string
-	isErr := err != nil
-	if isErr {
-		errMsg = err.Error()
-	}
-
 	tr := cStructs.TaskResponse{
-		Id:    id,
-		Type:  taskType,
-		Order: order,
-		Error: cStructs.TaskError{
-			Msg: errMsg,
-		},
-		Final:   isErr,
+		Id:      id,
+		Type:    taskType,
+		Order:   order,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
+
+	if err != nil {
+		tr.Error.Msg = err.Error()
+		tr.Final = true
+	}
 
 	if err := stream.Send(tr); err != nil {
 		c.log.Error("Error while sending response %w", zap.Error(err))
