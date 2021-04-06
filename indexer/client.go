@@ -491,11 +491,11 @@ func (c *Client) sendTransactionsInRange(ctx context.Context, logger *zap.Logger
 	chIn := oHBTxPool.Get()
 	chOut := oHBTxPool.Get()
 
-	errored := make(chan bool, 7)
+	errored := make(chan bool, 40)
 	defer close(errored)
 
 	wg := &sync.WaitGroup{}
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 40; i++ {
 		wg.Add(1)
 		go c.asyncBlockAndTx(ctx, logger, wg, chIn)
 	}
@@ -582,7 +582,6 @@ func populateRange(in, out chan hBTx, hr structs.HeightRange, er chan bool) {
 		}
 
 	}
-	close(in)
 }
 
 func (c *Client) asyncBlockAndTx(ctx context.Context, logger *zap.Logger, wg *sync.WaitGroup, cinn <-chan hBTx) {
