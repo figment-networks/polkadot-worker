@@ -22,7 +22,7 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/decode/decodepb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
-	"github.com/golang/groupcache/lru"
+	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -86,7 +86,10 @@ func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint
 	getAccountBalanceDuration = endpointDuration.WithLabels("getAccountBalance")
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
-
+	newLru, err := lru.New(3000)
+	if err != nil {
+		panic(fmt.Errorf("cache cannot be defined: %w", err)) // we really need to fatal here. this should not happen.
+	}
 	return &Client{
 		chainID:         chainID,
 		currency:        currency,
@@ -94,7 +97,7 @@ func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint
 		maxHeightsToGet: maxHeightsToGet,
 		gbPool:          NewGetBlockPool(300),
 		Cache: &ClientCache{
-			BlockHashCache: lru.New(3000),
+			BlockHashCache: newLru,
 		},
 		log:        log,
 		proxy:      proxy,
@@ -113,7 +116,7 @@ func (c *Client) RegisterStream(ctx context.Context, stream *cStructs.StreamAcce
 	defer c.sLock.Unlock()
 	c.streams[stream.StreamID] = stream
 
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 40; i++ {
 		go c.Run(ctx, stream)
 	}
 
@@ -145,7 +148,7 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 		case taskRequest := <-stream.RequestListener:
 			c.log.Debug("Received task request", zap.Stringer("taskID", taskRequest.Id), zap.String("type", taskRequest.Type))
 
-			ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Minute)
+			ctxWithTimeout, cancel := context.WithTimeout(ctx, 40*time.Minute)
 			defer cancel()
 
 			switch taskRequest.Type {
@@ -488,11 +491,11 @@ func (c *Client) sendTransactionsInRange(ctx context.Context, logger *zap.Logger
 	chIn := oHBTxPool.Get()
 	chOut := oHBTxPool.Get()
 
-	errored := make(chan bool, 7)
+	errored := make(chan bool, 40)
 	defer close(errored)
 
 	wg := &sync.WaitGroup{}
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 40; i++ {
 		wg.Add(1)
 		go c.asyncBlockAndTx(ctx, logger, wg, chIn)
 	}
@@ -517,7 +520,7 @@ RANGE_LOOP:
 					errored <- true // (lukanus): to close publisher and asyncBlockAndTx
 					err = resp.Error
 					out <- resp
-					break RANGE_LOOP
+					break INNER_LOOP
 				default:
 					out <- resp
 				}
