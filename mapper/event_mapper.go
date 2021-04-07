@@ -148,7 +148,19 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error 
 
 	if dataLen > 0 {
 		for ; i < dataLen; i++ {
-			attributes[i] = stringifyEventData(ev.Data[i])
+			evData := ev.Data[i]
+			attributes[i] = stringifyEventData(evData)
+
+			switch evData.Name {
+			case "Balance":
+				if balance, err := getBalance(evData); err == nil {
+					e.values = append(e.values, balance)
+				}
+			case "AccountId":
+				if accountID, err := getAccountID(ev.Data[i]); err == nil {
+					e.accountIDs = append(e.accountIDs, accountID)
+				}
+			}
 		}
 
 		e.Additional = make(map[string][]string)
