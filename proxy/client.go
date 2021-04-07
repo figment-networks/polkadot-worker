@@ -65,6 +65,7 @@ func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest) 
 		Chain:                   ddr.Chain,
 	})
 	if err != nil {
+		c.log.Error("Error receiving decode ", zap.Error(err))
 		rawRequestGRPCDuration.WithLabels("DecodeServiceClient", "ERR").Observe(time.Since(now).Seconds())
 		return nil, errors.Wrapf(err, "error calling decode")
 	}

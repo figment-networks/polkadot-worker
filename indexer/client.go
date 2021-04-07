@@ -520,7 +520,7 @@ RANGE_LOOP:
 					errored <- true // (lukanus): to close publisher and asyncBlockAndTx
 					err = resp.Error
 					out <- resp
-					break INNER_LOOP
+					break RANGE_LOOP
 				default:
 					out <- resp
 				}
@@ -582,6 +582,7 @@ func populateRange(in, out chan hBTx, hr structs.HeightRange, er chan bool) {
 		}
 
 	}
+	close(in)
 }
 
 func (c *Client) asyncBlockAndTx(ctx context.Context, logger *zap.Logger, wg *sync.WaitGroup, cinn <-chan hBTx) {

@@ -90,6 +90,7 @@ func main() {
 	polkaProxies := strings.Split(cfg.PolkadotProxyAddr, ",")
 	for _, pp := range polkaProxies {
 		grpcConn, err := grpc.DialContext(ctx, pp, grpc.WithInsecure(),
+			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(cfg.GrpcMaxRecvSize)),
 			grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 		)
 		if err != nil {
@@ -115,6 +116,8 @@ func main() {
 	monitor := &health.Monitor{}
 	go monitor.RunChecks(ctx, cfg.HealthCheckInterval)
 	monitor.AttachHttp(mux)
+
+	attachProfiling(mux)
 
 	handleHTTP(logger.GetLogger(), *cfg, mux)
 }
