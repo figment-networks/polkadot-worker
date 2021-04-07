@@ -37,6 +37,8 @@ type Config struct {
 	ManagerInterval time.Duration `json:"manager_interval" envconfig:"MANAGER_INTERVAL" default:"10s"`
 	Hostname        string        `json:"hostname" envconfig:"HOSTNAME"`
 
+	GrpcMaxRecvSize int `json:"grpc_max_recv_size" envconfig:"GRPC_MAX_RECV_SIZE" default:"1073741824"` // 1024^3
+
 	MaximumHeightsToGet float64 `json:"maximum_heights_to_get" envconfig:"MAXIMUM_HEIGHTS_TO_GET" default:"10000"`
 	ReqPerSecond        int     `json:"requests_per_second" envconfig:"REQUESTS_PER_SECOND" default:"20"`
 
