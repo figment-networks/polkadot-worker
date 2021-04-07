@@ -133,7 +133,7 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error 
 		case "info", "tip_hash", "call_hash", "index", "new_members", "proposal_index", "compute",
 			"destination_status", "is_ok", "threshold", "until", "authority_set", "registrar_index",
 			"timepoint", "when", "task", "id", "result", "judged", "era_index", "session_index",
-			"proposal_hash", "yes", "no", "proxy":
+			"proposal_hash", "yes", "no", "proxy", "voted":
 			break
 		default:
 			return fmt.Errorf("Unknown value to parse event %q values: %v", v, values)
