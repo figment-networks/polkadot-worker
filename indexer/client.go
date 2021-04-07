@@ -37,7 +37,7 @@ type ClientIface interface {
 	GetEventsByHeight(ctx context.Context, height uint64) (*eventpb.GetByHeightResponse, error)
 	GetTransactionsByHeight(ctx context.Context, height uint64) (*transactionpb.GetByHeightResponse, error)
 
-	DecodeData(ctx context.Context, ddr wStructs.DecodeDataRequest) (*decodepb.DecodeResponse, error)
+	DecodeData(ctx context.Context, ddr wStructs.DecodeDataRequest, height uint64) (*decodepb.DecodeResponse, error)
 }
 
 type PolkaClient interface {

@@ -68,7 +68,7 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 	}
 	ddr.BlockHash = blH
 
-	resp, err := c.proxy.DecodeData(ctx, ddr)
+	resp, err := c.proxy.DecodeData(ctx, ddr, height)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error while decoding data: %w", err)
 	}

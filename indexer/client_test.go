@@ -269,7 +269,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_UnmarshalError() {
 
 func (ic *IndexerClientTest) TestGetLatest_OK() {
 	ic.getLatestRpcResponses()
-	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr).Return(&ic.Decoded, nil)
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr, ic.Height[0]).Return(&ic.Decoded, nil)
 
 	req := structs.LatestDataRequest{
 		LastHeight: ic.Height[0],
@@ -371,7 +371,7 @@ func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
 func (ic *IndexerClientTest) TestGetLatest_DecodeDataError() {
 	ic.getLatestRpcResponses()
 	e := errors.New("new decode error")
-	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr).Return(&decodepb.DecodeResponse{}, e)
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr, ic.Height[0]).Return(&decodepb.DecodeResponse{}, e)
 
 	req := structs.LatestDataRequest{
 		LastHeight: uint64(ic.Height[0]),
@@ -449,7 +449,7 @@ func (ic *IndexerClientTest) TestGetLatest_GetLatestHeightError() {
 
 func (ic *IndexerClientTest) TestGetTransactions_OK() {
 	ic.getRpcResponses()
-	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr).Return(&ic.Decoded, nil)
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr, ic.Height[0]).Return(&ic.Decoded, nil)
 
 	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
@@ -558,7 +558,7 @@ func (ic *IndexerClientTest) TestGetTransactions_DecodeDataError() {
 	ic.getRpcResponses()
 
 	e := errors.New("new decode error")
-	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr).Return(&decodepb.DecodeResponse{}, e)
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr, ic.Height[0]).Return(&decodepb.DecodeResponse{}, e)
 
 	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
@@ -602,7 +602,7 @@ func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 	ic.getRpcResponses()
 	ic.Decoded.Block.Block.Extrinsics[0].PartialFee = "bad"
 
-	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr).Return(&ic.Decoded, nil)
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), ic.Ddr, ic.Height[0]).Return(&ic.Decoded, nil)
 
 	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
@@ -724,7 +724,7 @@ func (m proxyClientMock) GetTransactionsByHeight(ctx context.Context, height uin
 	return args.Get(0).(*transactionpb.GetByHeightResponse), args.Error(1)
 }
 
-func (m proxyClientMock) DecodeData(ctx context.Context, ddr wStructs.DecodeDataRequest) (*decodepb.DecodeResponse, error) {
-	args := m.Called(ctx, ddr)
+func (m proxyClientMock) DecodeData(ctx context.Context, ddr wStructs.DecodeDataRequest, height uint64) (*decodepb.DecodeResponse, error) {
+	args := m.Called(ctx, ddr, height)
 	return args.Get(0).(*decodepb.DecodeResponse), args.Error(1)
 }

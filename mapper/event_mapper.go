@@ -115,7 +115,8 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error 
 		switch v {
 		case "account", "approving", "authority_id", "multisig", "stash", "unvested", "target",
 			"sub", "main", "cancelling", "lost", "rescuer", "sender", "voter", "founder", "candidate",
-			"candidate_id", "vouching", "nominator", "validator", "finder", "real":
+			"candidate_id", "vouching", "nominator", "validator", "finder", "real", "primary", "reaper",
+			"restorer", "dest", "deployer", "contract", "creator", "owner":
 			if accountID, err := getAccountID(ev.Data[i]); err == nil {
 				e.accountIDs = append(e.accountIDs, accountID)
 			}
@@ -123,8 +124,8 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error 
 			e.senderAccountID, err = getAccountID(ev.Data[i])
 		case "to", "who", "beneficiary":
 			e.recipientAccountID, err = getAccountID(ev.Data[i])
-		case "deposit", "free_balance", "value", "balance", "amount", "offer", "validator_payout",
-			"remainder", "payout", "award", "slashed", "budget_remaining":
+		case "deposit", "free_balance", "value", "balance", "amount", "offer", "validator_payout", "bond",
+			"remainder", "payout", "award", "slashed", "budget_remaining", "burn", "rent_allowance":
 			if balance, err := getBalance(ev.Data[i]); err == nil {
 				e.values = append(e.values, balance)
 			}
@@ -132,8 +133,10 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error 
 			e.eventType = []string{"error"}
 		case "info", "tip_hash", "call_hash", "index", "new_members", "proposal_index", "compute",
 			"destination_status", "is_ok", "threshold", "until", "authority_set", "registrar_index",
-			"timepoint", "when", "task", "id", "result", "judged", "era_index", "session_index",
-			"proposal_hash", "yes", "no", "proxy", "voted":
+			"timepoint", "when", "task", "id", "result", "judged", "era_index", "session_index", "total_supply",
+			"proposal_hash", "yes", "no", "proxy", "voted", "disambiguation_index", "proxy_type",
+			"anonymous", "kind", "timeslot", "applied", "offline", "candidates", "depositors", "ref_index",
+			"version", "code_hash", "data", "asset_id", "symbol", "decimals", "name", "max_zombies":
 			break
 		default:
 			return fmt.Errorf("Unknown value to parse event %q values: %v", v, values)
