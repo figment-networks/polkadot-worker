@@ -49,7 +49,7 @@ func NewClient(log *zap.Logger, rl *rate.Limiter, conns *GRPConnections) *Client
 }
 
 // GetAccountBalance return Account Balance by provided height
-func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest) (*decodepb.DecodeResponse, error) {
+func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest, height uint64) (*decodepb.DecodeResponse, error) {
 	now := time.Now()
 
 	dc := c.conn.GetNextDecodeServiceClient()
@@ -65,7 +65,7 @@ func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest) 
 		Chain:                   ddr.Chain,
 	})
 	if err != nil {
-		c.log.Error("Error receiving decode ", zap.Error(err))
+		c.log.Error("Error receiving decode ", zap.Error(err), zap.Uint64("height", height))
 		rawRequestGRPCDuration.WithLabels("DecodeServiceClient", "ERR").Observe(time.Since(now).Seconds())
 		return nil, errors.Wrapf(err, "error calling decode")
 	}
