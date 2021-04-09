@@ -31,7 +31,7 @@ func parseEvents(log *zap.Logger, rawEvents []*eventpb.Event, currency string, d
 			continue
 		}
 
-		sub, err := getEvent(log, e, currency, exp, divider)
+		sub, err := getEvent(log, e, currency, exp, divider, height)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -68,10 +68,10 @@ type event struct {
 	eventType []string
 }
 
-func getEvent(log *zap.Logger, evpb *eventpb.Event, currency string, exp int, divider *big.Float) (structs.SubsetEvent, error) {
+func getEvent(log *zap.Logger, evpb *eventpb.Event, currency string, exp int, divider *big.Float, height uint64) (structs.SubsetEvent, error) {
 	var e event
 
-	if err := e.parseEventDescription(log, evpb); err != nil {
+	if err := e.parseEventDescription(log, evpb, height); err != nil {
 		return structs.SubsetEvent{}, err
 	}
 
@@ -97,7 +97,7 @@ func getEvent(log *zap.Logger, evpb *eventpb.Event, currency string, exp int, di
 	return e.SubsetEvent, nil
 }
 
-func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error {
+func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height uint64) error {
 	dataLen := len(ev.Data)
 	attributes := make([]string, dataLen)
 
@@ -112,18 +112,22 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error 
 			return fmt.Errorf("Not enough data to parse all event values")
 		}
 
+		eventData := ev.Data[i]
+
 		switch v {
 		case "account", "approving", "authority_id", "multisig", "stash", "unvested", "target",
 			"sub", "main", "cancelling", "lost", "rescuer", "sender", "voter", "founder", "candidate",
 			"candidate_id", "vouching", "nominator", "validator", "finder", "real", "primary", "reaper",
 			"restorer", "dest", "deployer", "contract", "creator", "owner":
-			if accountID, err := getAccountID(ev.Data[i]); err == nil {
+			if accountID, err := getAccountID(eventData); err == nil {
 				e.accountIDs = append(e.accountIDs, accountID)
 			}
 		case "from":
-			e.senderAccountID, err = getAccountID(ev.Data[i])
+			e.senderAccountID, err = getAccountID(eventData)
 		case "to", "who", "beneficiary":
-			e.recipientAccountID, err = getAccountID(ev.Data[i])
+			if eventData.Name != "AccountIndex" {
+				e.recipientAccountID, err = getAccountID(eventData)
+			}
 		case "deposit", "free_balance", "value", "balance", "amount", "offer", "validator_payout", "bond",
 			"remainder", "payout", "award", "slashed", "budget_remaining", "burn", "rent_allowance":
 			if balance, err := getBalance(ev.Data[i]); err == nil {
@@ -139,14 +143,14 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event) error 
 			"version", "code_hash", "data", "asset_id", "symbol", "decimals", "name", "max_zombies":
 			break
 		default:
-			return fmt.Errorf("Unknown value to parse event %q values: %v", v, values)
+			return fmt.Errorf("Unknown value to parse event %q values: %v height: %d", v, values, height)
 		}
 
 		if err != nil {
 			return fmt.Errorf("%d Error while parsing event %s", i, err.Error())
 		}
 
-		attributes[i] = stringifyEventData(ev.Data[i])
+		attributes[i] = stringifyEventData(eventData)
 	}
 
 	if dataLen > 0 {
