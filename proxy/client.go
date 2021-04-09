@@ -14,6 +14,7 @@ import (
 	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/encoding/gzip"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -63,7 +64,7 @@ func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest, 
 		CurrentEraParent:        ddr.CurrentEra,
 		NextFeeMultiplierParent: ddr.NextFeeMultipier,
 		Chain:                   ddr.Chain,
-	})
+	}, grpc.UseCompressor(gzip.Name))
 	if err != nil {
 		c.log.Error("Error receiving decode ", zap.Error(err), zap.Uint64("height", height))
 		rawRequestGRPCDuration.WithLabels("DecodeServiceClient", "ERR").Observe(time.Since(now).Seconds())

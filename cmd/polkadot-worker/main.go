@@ -91,6 +91,7 @@ func main() {
 	for _, pp := range polkaProxies {
 		grpcConn, err := grpc.DialContext(ctx, pp, grpc.WithInsecure(),
 			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(cfg.GrpcMaxRecvSize)),
+			grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(cfg.GrpcMaxSendSize)),
 			grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 		)
 		if err != nil {
