@@ -117,14 +117,14 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 		switch v {
 		case "account", "approving", "authority_id", "multisig", "stash", "unvested", "target",
 			"sub", "main", "cancelling", "lost", "rescuer", "sender", "voter", "founder", "candidate",
-			"candidate_id", "vouching", "nominator", "validator", "finder", "real", "primary", "reaper",
+			"candidate_id", "vouching", "nominator", "validator", "finder", "real", "primary",
 			"restorer", "dest", "deployer", "contract", "creator", "owner":
 			if accountID, err := getAccountID(eventData); err == nil {
 				e.accountIDs = append(e.accountIDs, accountID)
 			}
-		case "from":
+		case "from", "provider":
 			e.senderAccountID, err = getAccountID(eventData)
-		case "to", "who", "beneficiary":
+		case "to", "who", "beneficiary", "reaper":
 			if eventData.Name != "AccountIndex" {
 				e.recipientAccountID, err = getAccountID(eventData)
 			}
