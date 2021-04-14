@@ -255,7 +255,7 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 	var ldr structs.LatestDataRequest
 	var err error
 
-	if err = json.Unmarshal(tr.Payload, &ldr); ldr.LastHeight == 0 {
+	if err = json.Unmarshal(tr.Payload, &ldr); err != nil {
 		err = ErrBadRequest
 	}
 
