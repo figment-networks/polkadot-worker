@@ -20,7 +20,7 @@ var (
 	numRegexp  = regexp.MustCompile(`^[0-9]+$`)
 )
 
-func parseEvents(log *zap.Logger, rawEvents []*eventpb.Event, currency string, divider *big.Float, exp int, nonce string, time *time.Time, height uint64) ([]structs.SubsetEvent, []string, error) {
+func parseEvents(log *zap.Logger, rawEvents []*eventpb.Event, divider *big.Float, time *time.Time, exp int, height uint64, args, currency, nonce, method, signer string) ([]structs.SubsetEvent, []string, error) {
 	evIndexMap := make(map[int64]struct{})
 
 	subsetEvents := make([]structs.SubsetEvent, 0, len(rawEvents))
@@ -31,7 +31,7 @@ func parseEvents(log *zap.Logger, rawEvents []*eventpb.Event, currency string, d
 			continue
 		}
 
-		sub, err := getEvent(log, e, currency, exp, divider, height)
+		sub, err := getEvent(log, e, divider, exp, height, args, currency, method, signer)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -68,11 +68,15 @@ type event struct {
 	eventType []string
 }
 
-func getEvent(log *zap.Logger, evpb *eventpb.Event, currency string, exp int, divider *big.Float, height uint64) (structs.SubsetEvent, error) {
+func getEvent(log *zap.Logger, evpb *eventpb.Event, divider *big.Float, exp int, height uint64, args, currency, method, signer string) (structs.SubsetEvent, error) {
 	var e event
 
 	if err := e.parseEventDescription(log, evpb, height); err != nil {
 		return structs.SubsetEvent{}, err
+	}
+
+	if evpb.Error != "" {
+		e.handleError(args, currency, evpb.Error, method, signer)
 	}
 
 	if err := e.appendAmounts(exp, currency, divider); err != nil {
@@ -88,13 +92,21 @@ func getEvent(log *zap.Logger, evpb *eventpb.Event, currency string, exp int, di
 		e.Type = append(e.Type, e.eventType...)
 	}
 
-	if evpb.Error != "" {
-		e.Error = &structs.SubsetEventError{
-			Message: evpb.Error,
-		}
+	return e.SubsetEvent, nil
+}
+
+func (e *event) handleError(args, currency, errMsg, eventMethod, signer string) {
+	e.Error = &structs.SubsetEventError{
+		Message: errMsg,
 	}
 
-	return e.SubsetEvent, nil
+	if eventMethod == "transfer" {
+		if argSlice := strings.Split(args, ","); len(argSlice) == 2 {
+			e.recipientAccountID = signer
+			e.senderAccountID = argSlice[0]
+			e.values = []string{argSlice[1]}
+		}
+	}
 }
 
 func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height uint64) (err error) {
@@ -107,7 +119,9 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 	}
 
 	lastEvent := 0
-	for lastEvent, v := range values {
+	for i, v := range values {
+		lastEvent = i
+
 		if lastEvent >= dataLen {
 			return fmt.Errorf("Not enough data to parse all event values")
 		}
@@ -174,10 +188,10 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 				return fmt.Errorf("%d Error while parsing event %s", lastEvent, err.Error())
 			}
 		}
-
-		e.Additional = make(map[string][]string)
-		e.Additional["attributes"] = attributes
 	}
+
+	e.Additional = make(map[string][]string)
+	e.Additional["attributes"] = attributes
 
 	return nil
 }
