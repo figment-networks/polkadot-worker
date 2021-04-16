@@ -97,7 +97,7 @@ func getEvent(log *zap.Logger, evpb *eventpb.Event, currency string, exp int, di
 	return e.SubsetEvent, nil
 }
 
-func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height uint64) error {
+func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height uint64) (err error) {
 	dataLen := len(ev.Data)
 	attributes := make([]string, dataLen)
 
@@ -106,13 +106,13 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 		return err
 	}
 
-	i := 0
-	for i, v := range values {
-		if i >= dataLen {
+	lastEvent := 0
+	for lastEvent, v := range values {
+		if lastEvent >= dataLen {
 			return fmt.Errorf("Not enough data to parse all event values")
 		}
 
-		eventData := ev.Data[i]
+		eventData := ev.Data[lastEvent]
 
 		switch v {
 		case "account", "approving", "authority_id", "multisig", "stash", "unvested", "target",
@@ -130,7 +130,7 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 			}
 		case "deposit", "free_balance", "value", "balance", "amount", "offer", "validator_payout", "bond",
 			"remainder", "payout", "award", "slashed", "budget_remaining", "burn", "rent_allowance":
-			if balance, err := getBalance(ev.Data[i]); err == nil {
+			if balance, err := getBalance(ev.Data[lastEvent]); err == nil {
 				e.values = append(e.values, balance)
 			}
 		case "error":
@@ -147,16 +147,17 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 		}
 
 		if err != nil {
-			return fmt.Errorf("%d Error while parsing event %s", i, err.Error())
+			return fmt.Errorf("%d Error while parsing event %s", lastEvent, err.Error())
 		}
 
-		attributes[i] = stringifyEventData(eventData)
+		attributes[lastEvent] = stringifyEventData(eventData)
+		lastEvent++
 	}
 
 	if dataLen > 0 {
-		for ; i < dataLen; i++ {
-			evData := ev.Data[i]
-			attributes[i] = stringifyEventData(evData)
+		for ; lastEvent < dataLen; lastEvent++ {
+			evData := ev.Data[lastEvent]
+			attributes[lastEvent] = stringifyEventData(evData)
 
 			switch evData.Name {
 			case "Balance":
@@ -164,9 +165,13 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 					e.values = append(e.values, balance)
 				}
 			case "AccountId":
-				if accountID, err := getAccountID(ev.Data[i]); err == nil {
+				if accountID, err := getAccountID(ev.Data[lastEvent]); err == nil {
 					e.accountIDs = append(e.accountIDs, accountID)
 				}
+			}
+
+			if err != nil {
+				return fmt.Errorf("%d Error while parsing event %s", lastEvent, err.Error())
 			}
 		}
 
