@@ -129,7 +129,11 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 			"candidate_id", "vouching", "nominator", "validator", "finder", "real", "primary",
 			"restorer", "dest", "deployer", "contract", "creator", "owner":
 			if accountID, err := getAccountID(eventData); err == nil {
-				e.accountIDs = append(e.accountIDs, accountID)
+				if strings.ToLower(ev.Method) == "endowed" {
+					e.recipientAccountID = accountID
+				} else {
+					e.accountIDs = append(e.accountIDs, accountID)
+				}
 			}
 		case "from", "provider":
 			e.senderAccountID, err = getAccountID(eventData)
@@ -185,8 +189,11 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 		}
 	}
 
-	e.Additional = make(map[string][]string)
-	e.Additional["attributes"] = attributes
+	if len(attributes) > 0 {
+		e.Additional = make(map[string][]string)
+		e.Additional["attributes"] = attributes
+
+	}
 
 	return nil
 }
