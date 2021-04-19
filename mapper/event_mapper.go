@@ -20,7 +20,7 @@ var (
 	numRegexp  = regexp.MustCompile(`^[0-9]+$`)
 )
 
-func parseEvents(log *zap.Logger, rawEvents []*eventpb.Event, currency string, divider *big.Float, exp int, nonce string, time *time.Time, height uint64) ([]structs.SubsetEvent, []string, error) {
+func parseEvents(log *zap.Logger, rawEvents []*eventpb.Event, divider *big.Float, time *time.Time, exp int, height uint64, currency, nonce, signer string) ([]structs.SubsetEvent, []string, error) {
 	evIndexMap := make(map[int64]struct{})
 
 	subsetEvents := make([]structs.SubsetEvent, 0, len(rawEvents))
@@ -31,7 +31,7 @@ func parseEvents(log *zap.Logger, rawEvents []*eventpb.Event, currency string, d
 			continue
 		}
 
-		sub, err := getEvent(log, e, currency, exp, divider, height)
+		sub, err := getEvent(log, e, divider, exp, height, currency, signer)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -61,6 +61,7 @@ type event struct {
 	accountIDs         []string
 	recipientAccountID string
 	senderAccountID    string
+	signerID           string
 	values             []string
 	amount             structs.TransactionAmount
 
@@ -68,11 +69,15 @@ type event struct {
 	eventType []string
 }
 
-func getEvent(log *zap.Logger, evpb *eventpb.Event, currency string, exp int, divider *big.Float, height uint64) (structs.SubsetEvent, error) {
+func getEvent(log *zap.Logger, evpb *eventpb.Event, divider *big.Float, exp int, height uint64, currency, signer string) (structs.SubsetEvent, error) {
 	var e event
 
 	if err := e.parseEventDescription(log, evpb, height); err != nil {
 		return structs.SubsetEvent{}, err
+	}
+
+	if evpb.Error != "" {
+		e.handleError(currency, evpb.Error, signer)
 	}
 
 	if err := e.appendAmounts(exp, currency, divider); err != nil {
@@ -88,13 +93,15 @@ func getEvent(log *zap.Logger, evpb *eventpb.Event, currency string, exp int, di
 		e.Type = append(e.Type, e.eventType...)
 	}
 
-	if evpb.Error != "" {
-		e.Error = &structs.SubsetEventError{
-			Message: evpb.Error,
-		}
+	return e.SubsetEvent, nil
+}
+
+func (e *event) handleError(currency, errMsg, signer string) {
+	e.Error = &structs.SubsetEventError{
+		Message: errMsg,
 	}
 
-	return e.SubsetEvent, nil
+	e.signerID = signer
 }
 
 func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height uint64) (err error) {
@@ -107,7 +114,9 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 	}
 
 	lastEvent := 0
-	for lastEvent, v := range values {
+	for i, v := range values {
+		lastEvent = i
+
 		if lastEvent >= dataLen {
 			return fmt.Errorf("Not enough data to parse all event values")
 		}
@@ -120,7 +129,11 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 			"candidate_id", "vouching", "nominator", "validator", "finder", "real", "primary",
 			"restorer", "dest", "deployer", "contract", "creator", "owner":
 			if accountID, err := getAccountID(eventData); err == nil {
-				e.accountIDs = append(e.accountIDs, accountID)
+				if strings.ToLower(ev.Method) == "endowed" {
+					e.recipientAccountID = accountID
+				} else {
+					e.accountIDs = append(e.accountIDs, accountID)
+				}
 			}
 		case "from", "provider":
 			e.senderAccountID, err = getAccountID(eventData)
@@ -174,9 +187,12 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 				return fmt.Errorf("%d Error while parsing event %s", lastEvent, err.Error())
 			}
 		}
+	}
 
+	if len(attributes) > 0 {
 		e.Additional = make(map[string][]string)
 		e.Additional["attributes"] = attributes
+
 	}
 
 	return nil
@@ -275,7 +291,7 @@ func (e *event) appendAmounts(exp int, currency string, divider *big.Float) erro
 }
 
 func (e *event) appendAccounts() {
-	if e.accountIDs == nil && e.senderAccountID == "" && e.recipientAccountID == "" {
+	if e.accountIDs == nil && e.senderAccountID == "" && e.recipientAccountID == "" && e.signerID == "" {
 		return
 	}
 
@@ -292,6 +308,7 @@ func (e *event) appendAccounts() {
 	}
 
 	e.appendSender()
+	e.appendSigner()
 	e.appendRecipient()
 }
 
@@ -343,4 +360,14 @@ func (e *event) appendRecipient() {
 	transfers := make(map[string][]structs.EventTransfer)
 	transfers[e.recipientAccountID] = []structs.EventTransfer{eventTransfer}
 	e.Transfers = transfers
+}
+
+func (e *event) appendSigner() {
+	if e.signerID == "" {
+		return
+	}
+
+	e.Node["signer"] = []structs.Account{{
+		ID: e.signerID,
+	}}
 }

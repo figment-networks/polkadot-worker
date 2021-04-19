@@ -61,7 +61,9 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockp
 			return nil, err
 		}
 
-		subs, logs, err := parseEvents(log, t.GetEvents(), m.currency, m.div, m.exp, strconv.FormatUint(uint64(t.Nonce), 10), time, uint64(blockRes.Block.Header.Height))
+		nonce := strconv.FormatUint(uint64(t.Nonce), 10)
+		method := strings.ToLower(t.GetMethod())
+		subs, logs, err := parseEvents(log, t.GetEvents(), m.div, time, m.exp, uint64(blockRes.Block.Header.Height), m.currency, nonce, t.Signer)
 		if err != nil {
 			return nil, err
 		}
@@ -74,7 +76,7 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockp
 		event := structs.TransactionEvent{
 			Kind:   "Extrinsic",
 			Module: strings.ToLower(t.GetSection()),
-			Type:   []string{strings.ToLower(t.GetMethod())},
+			Type:   []string{method},
 			Sub:    subs,
 		}
 
