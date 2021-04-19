@@ -63,7 +63,7 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockp
 
 		nonce := strconv.FormatUint(uint64(t.Nonce), 10)
 		method := strings.ToLower(t.GetMethod())
-		subs, logs, err := parseEvents(log, t.GetEvents(), m.div, time, m.exp, uint64(blockRes.Block.Header.Height), t.Args, m.currency, nonce, method, t.Signer)
+		subs, logs, err := parseEvents(log, t.GetEvents(), m.div, time, m.exp, uint64(blockRes.Block.Header.Height), m.currency, nonce, t.Signer)
 		if err != nil {
 			return nil, err
 		}
