@@ -139,7 +139,13 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 			e.senderAccountID, err = getAccountID(eventData)
 		case "to", "who", "beneficiary", "reaper":
 			if eventData.Name != "AccountIndex" {
-				e.recipientAccountID, err = getAccountID(eventData)
+				if accountID, err := getAccountID(eventData); err == nil {
+					if strings.ToLower(ev.Method) == "delegated" {
+						e.accountIDs = append(e.accountIDs, accountID)
+					} else {
+						e.recipientAccountID = accountID
+					}
+				}
 			}
 		case "deposit", "free_balance", "value", "balance", "amount", "offer", "validator_payout", "bond",
 			"remainder", "payout", "award", "slashed", "budget_remaining", "burn", "rent_allowance":
