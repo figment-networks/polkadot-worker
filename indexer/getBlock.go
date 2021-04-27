@@ -13,17 +13,13 @@ import (
 	"github.com/figment-networks/polkadot-worker/api"
 	"github.com/figment-networks/polkadot-worker/api/scale"
 	"github.com/figment-networks/polkadot-worker/mapper"
+	scalecodec "github.com/itering/scale.go"
 
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
-
-	"github.com/itering/scale.go/types"
-	"github.com/itering/scale.go/utiles"
 
 	"github.com/figment-networks/indexer-manager/structs"
 
 	"go.uber.org/zap"
-
-	scalecodec "github.com/itering/scale.go"
 )
 
 var (
@@ -81,10 +77,20 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 	}
 	ddr.BlockHash = blH
 
-	err = getTransactionsForHeight(pblock, prv, string(ddr.MetadataParent))
+	meta, err := c.getMetadata(c.serverConn, ch, gpBLH, prv.SpecName, uint(prv.SpecVersion))
+	if err != nil {
+		return nil, nil, fmt.Errorf("error while getting metadata: %w", err)
+	}
+
+	ddr.MetadataParent = make([]byte, len(meta.Bytes))
+	copy(ddr.MetadataParent, meta.Bytes)
+
+	txs, err := getTransactionsForHeight(c.ds, pblock, meta, int(prv.SpecVersion))
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getTransactionsForHeight: %w", err)
 	}
+
+	log.Printf("txs %+v", txs)
 
 	resp, err := c.proxy.DecodeData(ctx, ddr, height)
 	if err != nil {
@@ -143,64 +149,84 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 	return height, err
 }
 
-func getTransactionsForHeight(block *scale.PolkaBlock, metadata string) (err error) {
-	/*
-		m := scalecodec.MetadataDecoder{}
-		//m.CheckRegistry()
-		types.RuntimeType{}.Reg()
-		c, err := ioutil.ReadFile("./polkadot.json")
+func getTransactionsForHeight(ds *scale.DecodeStorage, block *scale.PolkaBlock, meta *scale.MDecoder, specVer int) (transactions []scalecodec.ExtrinsicDecoder, err error) {
+
+	for _, extrinsicRaw := range block.Contents.Extrinsics {
+		eDec, err := ds.GetExtrinsic(extrinsicRaw, &meta.Decoder.Metadata, specVer)
 		if err != nil {
-			panic(err)
+			return transactions, err
 		}
-		types.RegCustomTypes(source.LoadTypeRegistry(c))
-		m.Init(utiles.HexToBytes(metadata))
-		if err = m.Process(); err != nil {
-			return err
-		}
-		option := types.ScaleDecoderOption{Metadata: &m.Metadata, Spec: 29}
-		//option := types.ScaleDecoderOption{Metadata: &m.Metadata, Spec: 1055}
-	*/
-	for i, extrinsicRaw := range block.Contents.Extrinsics {
-		e := scalecodec.ExtrinsicDecoder{}
-		e.Init(types.ScaleBytes{Data: utiles.HexToBytes(extrinsicRaw)}, &option)
-		e.Process()
-
-		b, _ := json.Marshal(e.Value)
-		log.Println("extrinsicRaw", block.Contents.Header.Number, i, extrinsicRaw)
-		log.Println("block", block.Contents.Header.Number, i, e.ContainsTransaction, e.ExtrinsicHash, string(b))
+		transactions = append(transactions, eDec)
 	}
-	//r := `{"call_code":"0200","call_module":"Timestamp","call_module_function":"set","era":"","extrinsic_length":10,"nonce":0,"params":[{"name":"now","type":"Compact\u003cMoment\u003e","value":1587602394}],"tip":null,"version_info":"04"}`
+	return transactions, err
+}
 
+/*
+	m := scalecodec.MetadataDecoder{}
+	//m.CheckRegistry()
+	types.RuntimeType{}.Reg()
+	c, err := ioutil.ReadFile("./polkadot.json")
+	if err != nil {
+		panic(err)
+	}
+	types.RegCustomTypes(source.LoadTypeRegistry(c))
+	m.Init(utiles.HexToBytes(metadata))
+	if err = m.Process(); err != nil {
+		return err
+	}
+	option := types.ScaleDecoderOption{Metadata: &m.Metadata, Spec: 29}
+	//option := types.ScaleDecoderOption{Metadata: &m.Metadata, Spec: 1055}
+*/
+//r := `{"call_code":"0200","call_module":"Timestamp","call_module_function":"set","era":"","extrinsic_length":10,"nonce":0,"params":[{"name":"now","type":"Compact\u003cMoment\u003e","value":1587602394}],"tip":null,"version_info":"04"}`
+
+/*
+	conn.Send(ch, RequestA, "eth_getBlockTransactionCountByNumber", []interface{}{"0x497a6d"})
+
+	txNum := <-ch
+	if txNum.Error != nil {
+		return err
+	}
+
+	s := string(txNum.Result)
+	if s != "" {
+		//res := []byte(s[1 : len(s)-1])
+		log.Println("res", height, s)
+	}
+	//var expected int
+	//for _, v := range v {
+	//	conn.Send(ch, RequestB+i, "getTransactionByBlockNumberAndIndex", []interface{}{height, 0})
+	//}
 	/*
-		conn.Send(ch, RequestA, "eth_getBlockTransactionCountByNumber", []interface{}{"0x497a6d"})
-
-		txNum := <-ch
-		if txNum.Error != nil {
-			return err
-		}
-
-		s := string(txNum.Result)
-		if s != "" {
-			//res := []byte(s[1 : len(s)-1])
-			log.Println("res", height, s)
-		}
-		//var expected int
-		//for _, v := range v {
-		//	conn.Send(ch, RequestB+i, "getTransactionByBlockNumberAndIndex", []interface{}{height, 0})
-		//}
-		/*
-			for tx := range ch { // (lukanus): has to die in it's own context
-				i++
-				if blockHashResp.Error != nil {
-					err = blockHashResp.Error
-					if i == expected {
-						break
-					}
-					continue
+		for tx := range ch { // (lukanus): has to die in it's own context
+			i++
+			if blockHashResp.Error != nil {
+				err = blockHashResp.Error
+				if i == expected {
+					break
 				}
-	*/
-	return nil
+				continue
+			}
+*/
 
+func (c *Client) getMetadata(conn PolkaClient, ch chan api.Response, blockHash, specName string, specVer uint) (meta *scale.MDecoder, err error) {
+
+	mDec, ok, err := c.ds.GetMDecoder(specName, specVer)
+	if err != nil {
+		return nil, err
+	}
+
+	if ok {
+		return mDec, nil
+	}
+
+	conn.Send(ch, RequestParentMetadata, "state_getMetadata", []interface{}{blockHash})
+	res := <-ch
+	if res.Error != nil {
+		return nil, res.Error
+	}
+
+	s := string(res.Result)
+	return c.ds.SetMetadataDecoder(specVer, []byte(s[1:len(s)-1]))
 }
 
 func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan api.Response) (blockHash, parentHash, grandparentHash string, err error) {
@@ -302,7 +328,6 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 	conn.Send(ch, RequestNextFeeMultipier, "state_getStorage", []interface{}{PolkadotTypeNextFeeMultiplier, parentBlockHash})
 	conn.Send(ch, RequestCurrentEra, "state_getStorage", []interface{}{PolkadotTypeCurrentEra, parentBlockHash})
 
-	conn.Send(ch, RequestParentMetadata, "state_getMetadata", []interface{}{grandParentBlockHash})
 	conn.Send(ch, RequestParentRuntimeVersion, "state_getRuntimeVersion", []interface{}{grandParentBlockHash})
 
 	ddr = wStructs.DecodeDataRequest{}
@@ -326,13 +351,10 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 			s := string(res.Result)
 			ddr.Block = []byte(s[1 : len(s)-1])
 			err = json.Unmarshal(res.Result, block)
-		case "state_getMetadata":
-			s := string(res.Result)
-			ddr.MetadataParent = []byte(s[1 : len(s)-1])
 		case "state_getRuntimeVersion":
 			s := string(res.Result)
 			ddr.RuntimeParent = []byte(s[1 : len(s)-1])
-			err = json.Unmarshal(res.Result, block)
+			err = json.Unmarshal(res.Result, prm)
 		case "state_getStorage":
 			switch res.ID {
 			case RequestNextFeeMultipier:
@@ -350,7 +372,7 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 			}
 		}
 
-		if i == 7 {
+		if i == 6 {
 			break
 		}
 		i++

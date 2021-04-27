@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/figment-networks/polkadot-worker/api"
+	"github.com/figment-networks/polkadot-worker/api/scale"
 	"github.com/figment-networks/polkadot-worker/cmd/polkadot-worker/config"
 	"github.com/figment-networks/polkadot-worker/cmd/polkadot-worker/logger"
 	"github.com/figment-networks/polkadot-worker/indexer"
@@ -108,7 +109,17 @@ func main() {
 		go connApi.Run(ctx, address)
 	}
 
-	indexerClient := createIndexerClient(ctx, logger.GetLogger(), cfg, ngc, connApi)
+	ds := scale.NewDecodeStorage()
+	specName := cfg.ChainID
+	if specName == "mainnet" {
+		specName = "polkadot"
+	}
+	if err := ds.Init(specName); err != nil {
+		log.Fatal("Error creating decode storage", zap.Error(err))
+
+	}
+
+	indexerClient := createIndexerClient(ctx, logger.GetLogger(), cfg, ngc, connApi, ds)
 	go serveGRPC(logger.GetLogger(), *cfg, indexerClient)
 
 	mux := http.NewServeMux()
@@ -142,11 +153,11 @@ func getConfig(path string) (cfg *config.Config, err error) {
 	return cfg, nil
 }
 
-func createIndexerClient(ctx context.Context, log *zap.Logger, cfg *config.Config, conns *proxy.GRPConnections, connApi *api.Conn) *indexer.Client {
+func createIndexerClient(ctx context.Context, log *zap.Logger, cfg *config.Config, conns *proxy.GRPConnections, connApi *api.Conn, ds *scale.DecodeStorage) *indexer.Client {
 	rateLimiter := rate.NewLimiter(rate.Limit(cfg.ReqPerSecond), cfg.ReqPerSecond)
 	proxyClient := proxy.NewClient(log, rateLimiter, conns)
 
-	return indexer.NewClient(log, proxyClient, cfg.Exp, uint64(cfg.MaximumHeightsToGet), cfg.ChainID, cfg.Currency, connApi)
+	return indexer.NewClient(log, proxyClient, cfg.Exp, uint64(cfg.MaximumHeightsToGet), cfg.ChainID, cfg.Currency, connApi, ds)
 }
 
 func registerWorker(ctx context.Context, l *zap.Logger, cfg *config.Config) {

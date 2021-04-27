@@ -17,9 +17,13 @@ all: prepare build
 
 .PHONY: prepare
 prepare:
-	go mod vendor
-
-	rm -rf ./vendor
+	mkdir -p build
+	rm -rf ./build
+	git clone https://github.com/itering/scale.go.git ./build/scale.go
+	rm -rf ./api/scale/networks
+	mkdir ./api/scale/networks
+	cp -R ./build/scale.go/network/* ./api/scale/networks
+	rm -rf ./build
 
 .PHONY: build
 build: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.Timestamp=$(shell date +%s)
