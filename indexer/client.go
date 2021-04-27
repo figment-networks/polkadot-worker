@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/figment-networks/polkadot-worker/api"
+	"github.com/figment-networks/polkadot-worker/api/scale"
 	"github.com/figment-networks/polkadot-worker/mapper"
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
 
@@ -77,12 +78,14 @@ type Client struct {
 	sLock   sync.Mutex
 	streams map[uuid.UUID]*cStructs.StreamAccess
 
+	ds *scale.DecodeStorage
+
 	abMapper *mapper.AccountBalanceMapper
 	trMapper *mapper.TransactionMapper
 }
 
 // NewClient is a indexer-manager Client constructor
-func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint64, chainID, currency string, serverConn PolkaClient) *Client {
+func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint64, chainID, currency string, serverConn PolkaClient, ds *scale.DecodeStorage) *Client {
 	getAccountBalanceDuration = endpointDuration.WithLabels("getAccountBalance")
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
@@ -99,6 +102,7 @@ func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint
 		Cache: &ClientCache{
 			BlockHashCache: newLru,
 		},
+		ds:         ds,
 		log:        log,
 		proxy:      proxy,
 		serverConn: serverConn,
