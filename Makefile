@@ -12,14 +12,21 @@ else
 VERSION ?= n/a
 endif
 
-all: build
+all: prepare build
+
+
+.PHONY: prepare
+prepare:
+	go mod vendor
+
+	rm -rf ./vendor
 
 .PHONY: build
 build: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.Timestamp=$(shell date +%s)
 build: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.Version=$(VERSION)
 build: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.GitSHA=$(GIT_SHA)
 build:
-	go build -o worker -ldflags '$(LDFLAGS)'  ./cmd/polkadot-worker
+	GOOS=linux GOARCH=amd64 go build -o worker -ldflags '$(LDFLAGS)'  ./cmd/polkadot-worker
 
 .PHONY: pack-release
 pack-release:

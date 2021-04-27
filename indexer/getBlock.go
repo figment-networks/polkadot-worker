@@ -4,17 +4,30 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/figment-networks/polkadot-worker/api"
+	"github.com/figment-networks/polkadot-worker/api/scale"
 	"github.com/figment-networks/polkadot-worker/mapper"
+
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
+
+	"github.com/itering/scale.go/types"
+	"github.com/itering/scale.go/utiles"
 
 	"github.com/figment-networks/indexer-manager/structs"
 
 	"go.uber.org/zap"
+
+	scalecodec "github.com/itering/scale.go"
+)
+
+var (
+	mutex = sync.Mutex{}
 )
 
 const (
@@ -62,11 +75,16 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 		return nil, nil, fmt.Errorf("error unmarshaling block data: %w", err)
 	}
 
-	ddr, err := getOthers(blH, pBlH, gpBLH, c.serverConn, ch)
+	ddr, pblock, prv, err := getOthers(blH, pBlH, gpBLH, c.serverConn, ch)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error unmarshaling block data: %w", err)
 	}
 	ddr.BlockHash = blH
+
+	err = getTransactionsForHeight(pblock, prv, string(ddr.MetadataParent))
+	if err != nil {
+		return nil, nil, fmt.Errorf("error getTransactionsForHeight: %w", err)
+	}
 
 	resp, err := c.proxy.DecodeData(ctx, ddr, height)
 	if err != nil {
@@ -89,10 +107,6 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 	return block, transactions, nil
 }
 
-type BlockHeader struct {
-	Number string `json:"number"`
-}
-
 func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response) (height uint64, err error) {
 	conn.Send(ch, RequestFinalizedHead, "chain_getFinalizedHead", nil)
 	resp := <-ch
@@ -106,7 +120,7 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 		return 0, fmt.Errorf("response from ws is wrong: %s ", resp.Error)
 	}
 
-	bH := &BlockHeader{}
+	bH := &scale.BlockHeader{}
 	if err := json.Unmarshal(header.Result, bH); err != nil {
 		return 0, err
 	}
@@ -127,6 +141,66 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 		cache.BlockHashCacheLock.Unlock()
 	}
 	return height, err
+}
+
+func getTransactionsForHeight(block *scale.PolkaBlock, metadata string) (err error) {
+	/*
+		m := scalecodec.MetadataDecoder{}
+		//m.CheckRegistry()
+		types.RuntimeType{}.Reg()
+		c, err := ioutil.ReadFile("./polkadot.json")
+		if err != nil {
+			panic(err)
+		}
+		types.RegCustomTypes(source.LoadTypeRegistry(c))
+		m.Init(utiles.HexToBytes(metadata))
+		if err = m.Process(); err != nil {
+			return err
+		}
+		option := types.ScaleDecoderOption{Metadata: &m.Metadata, Spec: 29}
+		//option := types.ScaleDecoderOption{Metadata: &m.Metadata, Spec: 1055}
+	*/
+	for i, extrinsicRaw := range block.Contents.Extrinsics {
+		e := scalecodec.ExtrinsicDecoder{}
+		e.Init(types.ScaleBytes{Data: utiles.HexToBytes(extrinsicRaw)}, &option)
+		e.Process()
+
+		b, _ := json.Marshal(e.Value)
+		log.Println("extrinsicRaw", block.Contents.Header.Number, i, extrinsicRaw)
+		log.Println("block", block.Contents.Header.Number, i, e.ContainsTransaction, e.ExtrinsicHash, string(b))
+	}
+	//r := `{"call_code":"0200","call_module":"Timestamp","call_module_function":"set","era":"","extrinsic_length":10,"nonce":0,"params":[{"name":"now","type":"Compact\u003cMoment\u003e","value":1587602394}],"tip":null,"version_info":"04"}`
+
+	/*
+		conn.Send(ch, RequestA, "eth_getBlockTransactionCountByNumber", []interface{}{"0x497a6d"})
+
+		txNum := <-ch
+		if txNum.Error != nil {
+			return err
+		}
+
+		s := string(txNum.Result)
+		if s != "" {
+			//res := []byte(s[1 : len(s)-1])
+			log.Println("res", height, s)
+		}
+		//var expected int
+		//for _, v := range v {
+		//	conn.Send(ch, RequestB+i, "getTransactionByBlockNumberAndIndex", []interface{}{height, 0})
+		//}
+		/*
+			for tx := range ch { // (lukanus): has to die in it's own context
+				i++
+				if blockHashResp.Error != nil {
+					err = blockHashResp.Error
+					if i == expected {
+						break
+					}
+					continue
+				}
+	*/
+	return nil
+
 }
 
 func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan api.Response) (blockHash, parentHash, grandparentHash string, err error) {
@@ -217,7 +291,7 @@ func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 	return blockHash, parentHash, grandparentHash, err
 }
 
-func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn PolkaClient, ch chan api.Response) (ddr wStructs.DecodeDataRequest, err error) {
+func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn PolkaClient, ch chan api.Response) (ddr wStructs.DecodeDataRequest, block *scale.PolkaBlock, prm *scale.PolkaRuntimeVersion, err error) {
 
 	conn.Send(ch, RequestSystemChain, "system_chain", []interface{}{})
 	conn.Send(ch, RequestBlock, "chain_getBlock", []interface{}{blockHash})
@@ -232,7 +306,8 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 	conn.Send(ch, RequestParentRuntimeVersion, "state_getRuntimeVersion", []interface{}{grandParentBlockHash})
 
 	ddr = wStructs.DecodeDataRequest{}
-
+	block = &scale.PolkaBlock{}
+	prm = &scale.PolkaRuntimeVersion{}
 	var i uint8
 	for res := range ch {
 		if res.Error != nil {
@@ -250,12 +325,14 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 		case "chain_getBlock":
 			s := string(res.Result)
 			ddr.Block = []byte(s[1 : len(s)-1])
+			err = json.Unmarshal(res.Result, block)
 		case "state_getMetadata":
 			s := string(res.Result)
 			ddr.MetadataParent = []byte(s[1 : len(s)-1])
 		case "state_getRuntimeVersion":
 			s := string(res.Result)
 			ddr.RuntimeParent = []byte(s[1 : len(s)-1])
+			err = json.Unmarshal(res.Result, block)
 		case "state_getStorage":
 			switch res.ID {
 			case RequestNextFeeMultipier:
@@ -279,5 +356,5 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 		i++
 	}
 
-	return ddr, err
+	return ddr, block, prm, err
 }
