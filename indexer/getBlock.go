@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/big"
 	"strings"
 	"sync"
@@ -13,7 +12,6 @@ import (
 	"github.com/figment-networks/polkadot-worker/api"
 	"github.com/figment-networks/polkadot-worker/api/scale"
 	"github.com/figment-networks/polkadot-worker/mapper"
-	scalecodec "github.com/itering/scale.go"
 
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
 
@@ -90,8 +88,6 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 		return nil, nil, fmt.Errorf("error getTransactionsForHeight: %w", err)
 	}
 
-	log.Printf("txs %+v", txs)
-
 	resp, err := c.proxy.DecodeData(ctx, ddr, height)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error while decoding data: %w", err)
@@ -107,6 +103,19 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 
 	if transactions, err = c.trMapper.TransactionsMapper(c.log, resp.Block); err != nil {
 		return nil, nil, fmt.Errorf("error while mapping transactions: %w", err)
+	}
+
+	// pair transactions with ids
+	for k, t := range transactions {
+		for extIndex, rawTx := range txs {
+			if t.Hash[2:] == rawTx.ExtrinsicHash {
+				for in, ev := range t.Events {
+					ev.ID = fmt.Sprintf("%d-%d", block.Height, extIndex)
+					t.Events[in] = ev
+				}
+				transactions[k] = t
+			}
+		}
 	}
 
 	logger.Debug("Finished ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
@@ -149,8 +158,7 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 	return height, err
 }
 
-func getTransactionsForHeight(ds *scale.DecodeStorage, block *scale.PolkaBlock, meta *scale.MDecoder, specVer int) (transactions []scalecodec.ExtrinsicDecoder, err error) {
-
+func getTransactionsForHeight(ds *scale.DecodeStorage, block *scale.PolkaBlock, meta *scale.MDecoder, specVer int) (transactions []scale.ScaleExtrinsic, err error) {
 	for _, extrinsicRaw := range block.Contents.Extrinsics {
 		eDec, err := ds.GetExtrinsic(extrinsicRaw, &meta.Decoder.Metadata, specVer)
 		if err != nil {
@@ -160,53 +168,6 @@ func getTransactionsForHeight(ds *scale.DecodeStorage, block *scale.PolkaBlock, 
 	}
 	return transactions, err
 }
-
-/*
-	m := scalecodec.MetadataDecoder{}
-	//m.CheckRegistry()
-	types.RuntimeType{}.Reg()
-	c, err := ioutil.ReadFile("./polkadot.json")
-	if err != nil {
-		panic(err)
-	}
-	types.RegCustomTypes(source.LoadTypeRegistry(c))
-	m.Init(utiles.HexToBytes(metadata))
-	if err = m.Process(); err != nil {
-		return err
-	}
-	option := types.ScaleDecoderOption{Metadata: &m.Metadata, Spec: 29}
-	//option := types.ScaleDecoderOption{Metadata: &m.Metadata, Spec: 1055}
-*/
-//r := `{"call_code":"0200","call_module":"Timestamp","call_module_function":"set","era":"","extrinsic_length":10,"nonce":0,"params":[{"name":"now","type":"Compact\u003cMoment\u003e","value":1587602394}],"tip":null,"version_info":"04"}`
-
-/*
-	conn.Send(ch, RequestA, "eth_getBlockTransactionCountByNumber", []interface{}{"0x497a6d"})
-
-	txNum := <-ch
-	if txNum.Error != nil {
-		return err
-	}
-
-	s := string(txNum.Result)
-	if s != "" {
-		//res := []byte(s[1 : len(s)-1])
-		log.Println("res", height, s)
-	}
-	//var expected int
-	//for _, v := range v {
-	//	conn.Send(ch, RequestB+i, "getTransactionByBlockNumberAndIndex", []interface{}{height, 0})
-	//}
-	/*
-		for tx := range ch { // (lukanus): has to die in it's own context
-			i++
-			if blockHashResp.Error != nil {
-				err = blockHashResp.Error
-				if i == expected {
-					break
-				}
-				continue
-			}
-*/
 
 func (c *Client) getMetadata(conn PolkaClient, ch chan api.Response, blockHash, specName string, specVer uint) (meta *scale.MDecoder, err error) {
 

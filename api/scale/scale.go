@@ -2,6 +2,7 @@ package scale
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -21,6 +22,23 @@ type MDecoder struct {
 	Decoder *scalecodec.MetadataDecoder
 	Spec    uint
 	Bytes   []byte
+}
+
+type ScaleExtrinsic struct {
+	ExtrinsicLength     int                         `json:"extrinsic_length"`
+	ExtrinsicHash       string                      `json:"extrinsic_hash"`
+	VersionInfo         string                      `json:"version_info"`
+	ContainsTransaction bool                        `json:"contains_transaction"`
+	Address             interface{}                 `json:"address"`
+	Signature           string                      `json:"signature"`
+	SignatureVersion    int                         `json:"signature_version"`
+	Nonce               int                         `json:"nonce"`
+	Era                 string                      `json:"era"`
+	CallIndex           string                      `json:"call_index"`
+	Tip                 interface{}                 `json:"tip"`
+	CallModule          types.MetadataModules       `json:"call_module"`
+	Call                types.MetadataCalls         `json:"call"`
+	Params              []scalecodec.ExtrinsicParam `json:"params"`
 }
 
 type DecodeStorage struct {
@@ -67,12 +85,18 @@ func (ds *DecodeStorage) GetMDecoder(specName string, specVersion uint) (*MDecod
 }
 
 func (ds *DecodeStorage) SetMetadataDecoder(specVersion uint, metadata []byte) (md *MDecoder, err error) {
-	// todo(lukanus): on panic
-	/*
-	   if r := recover(); r != nil {
-	   	fmt.Println("Recovered in f", r)
-	   }
-	*/
+	defer func() {
+		if r := recover(); r != nil {
+			switch r.(type) {
+			case string:
+				err = errors.New(r.(string))
+			case error:
+				err = r.(error)
+			default:
+				err = errors.New("fatal error in SetMetadataDecoder")
+			}
+		}
+	}()
 
 	mDec := &MDecoder{
 		Bytes: make([]byte, len(metadata)),
@@ -90,13 +114,23 @@ func (ds *DecodeStorage) SetMetadataDecoder(specVersion uint, metadata []byte) (
 	ds.decoders[specVersion] = mDec
 	ds.storageLock.Unlock()
 
-	return mDec, nil
+	return mDec, err
 
 }
 
-func (ds *DecodeStorage) GetExtrinsic(extrinsicRaw string, metadata *types.MetadataStruct, specVer int) (scalecodec.ExtrinsicDecoder, error) {
-
-	// todo(lukanus): on panic
+func (ds *DecodeStorage) GetExtrinsic(extrinsicRaw string, metadata *types.MetadataStruct, specVer int) (exD ScaleExtrinsic, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			switch r.(type) {
+			case string:
+				err = errors.New(r.(string))
+			case error:
+				err = r.(error)
+			default:
+				err = errors.New("fatal error in GetExtrinsic")
+			}
+		}
+	}()
 	e := scalecodec.ExtrinsicDecoder{}
 	e.Init(types.ScaleBytes{Data: utiles.HexToBytes(extrinsicRaw)}, &types.ScaleDecoderOption{
 		Metadata: metadata,
@@ -104,11 +138,22 @@ func (ds *DecodeStorage) GetExtrinsic(extrinsicRaw string, metadata *types.Metad
 	})
 	e.Process()
 
-	/*	b, _ := json.Marshal(e.Value)
-		log.Println("extrinsicRaw", block.Contents.Header.Number, i, extrinsicRaw)
-		log.Println("block", block.Contents.Header.Number, i, e.ContainsTransaction, e.ExtrinsicHash, string(b))*/
-	//	}
-	return e, nil
+	return ScaleExtrinsic{
+		ExtrinsicLength:     e.ExtrinsicLength,
+		ExtrinsicHash:       e.ExtrinsicHash,
+		Era:                 e.Era,
+		VersionInfo:         e.VersionInfo,
+		ContainsTransaction: e.ContainsTransaction,
+		Address:             e.Address,
+		Signature:           e.Signature,
+		SignatureVersion:    e.SignatureVersion,
+		Nonce:               e.Nonce,
+		CallIndex:           e.CallIndex,
+		Tip:                 e.Tip,
+		CallModule:          e.CallModule,
+		Call:                e.Call,
+		Params:              e.Params,
+	}, err
 }
 
 type PolkaBlock struct {
