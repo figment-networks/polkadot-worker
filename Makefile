@@ -14,7 +14,6 @@ endif
 
 all: prepare build
 
-
 .PHONY: prepare
 prepare:
 	mkdir -p build
