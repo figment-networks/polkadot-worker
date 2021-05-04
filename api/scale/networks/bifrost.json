@@ -1,0 +1,625 @@
+{
+  "Weight": "u64",
+  "CompactAssignments": "CompactAssignmentsLatest",
+  "RefCount": "u32",
+  "DispatchResult": {
+    "type": "enum",
+    "type_mapping": [
+      [
+        "Ok",
+        "Null"
+      ],
+      [
+        "Error",
+        "DispatchError"
+      ]
+    ]
+  },
+  "Address": "MultiAddress",
+  "LookupSource": "MultiAddress",
+  "ProducerKey": {
+    "type_mapping": [
+      [
+        "producer_name",
+        "AccountName"
+      ],
+      [
+        "block_signing_key",
+        "PublicKey"
+      ]
+    ],
+    "type": "struct"
+  },
+  "ActionName": "u64",
+  "PermissionLevel": {
+    "type_mapping": [
+      [
+        "actor",
+        "AccountName"
+      ],
+      [
+        "permission",
+        "PermissionName"
+      ]
+    ],
+    "type": "struct"
+  },
+  "Fee": "u64",
+  "ConvertPrice": "u128",
+  "TxOut": {
+    "type_mapping": [
+      [
+        "Initialized",
+        "MultiSigTx"
+      ],
+      [
+        "Created",
+        "MultiSigTx"
+      ],
+      [
+        "SignComplete",
+        "MultiSigTx"
+      ],
+      [
+        "Sent",
+        "Sent"
+      ],
+      [
+        "Succeeded",
+        "Succeeded"
+      ],
+      [
+        "Failed",
+        "Failed"
+      ]
+    ],
+    "type": "enum"
+  },
+  "ProducerAuthoritySchedule": {
+    "type_mapping": [
+      [
+        "version",
+        "u32"
+      ],
+      [
+        "producers",
+        "Vec<ProducerAuthority>"
+      ]
+    ],
+    "type": "struct"
+  },
+  "ProducerAuthority": {
+    "type_mapping": [
+      [
+        "producer_name",
+        "ActionName"
+      ],
+      [
+        "authority",
+        "BlockSigningAuthority"
+      ]
+    ],
+    "type": "struct"
+  },
+  "UnsignedInt": "u32",
+  "PoolWeight": "Balance",
+  "RatePerBlock": "u64",
+  "Checksum256": "([u8;32])",
+  "Failed": {
+    "type_mapping": [
+      [
+        "tx_id",
+        "Vec<u8>"
+      ],
+      [
+        "reason",
+        "Vec<u8>"
+      ]
+    ],
+    "type": "struct"
+  },
+  "IncrementalMerkle": {
+    "type_mapping": [
+      [
+        "_node_count",
+        "u64"
+      ],
+      [
+        "_active_nodes",
+        "Checksum256Array"
+      ]
+    ],
+    "type": "struct"
+  },
+  "AccountAsset": {
+    "type_mapping": [
+      [
+        "balance",
+        "Balance"
+      ],
+      [
+        "locked",
+        "Balance"
+      ],
+      [
+        "available",
+        "Balance"
+      ],
+      [
+        "cost",
+        "Cost"
+      ],
+      [
+        "income",
+        "Income"
+      ]
+    ],
+    "type": "struct"
+  },
+  "MultiSig": {
+    "type_mapping": [
+      [
+        "signatures",
+        "Vec<TxSig>"
+      ],
+      [
+        "threshold",
+        "u8"
+      ]
+    ],
+    "type": "struct"
+  },
+  "TokenPool": "Balance",
+  "Nonce": "u32",
+  "AssetConfig": {
+    "type_mapping": [
+      [
+        "redeem_duration",
+        "BlockNumber"
+      ],
+      [
+        "min_reward_per_block",
+        "Balance"
+      ]
+    ],
+    "type": "struct"
+  },
+  "SpecIndex": "u32",
+  "Succeeded": {
+    "type_mapping": [
+      [
+        "tx_id",
+        "Vec<u8>"
+      ]
+    ],
+    "type": "struct"
+  },
+  "DataVersion": "u64",
+  "BlockHeader": {
+    "type_mapping": [
+      [
+        "timestamp",
+        "BlockTimestamp"
+      ],
+      [
+        "producer",
+        "AccountName"
+      ],
+      [
+        "confirmed",
+        "u16"
+      ],
+      [
+        "previous",
+        "Checksum256"
+      ],
+      [
+        "transaction_mroot",
+        "Checksum256"
+      ],
+      [
+        "action_mroot",
+        "Checksum256"
+      ],
+      [
+        "schedule_version",
+        "u32"
+      ],
+      [
+        "new_producers",
+        "Option<ProducerSchedule>"
+      ],
+      [
+        "header_extensions",
+        "Vec<Extension>"
+      ]
+    ],
+    "type": "struct"
+  },
+  "Price": "u64",
+  "Precision": "u32",
+  "MultiSigTx": {
+    "type_mapping": [
+      [
+        "chain_id",
+        "Vec<u8>"
+      ],
+      [
+        "raw_tx",
+        "Vec<u8>"
+      ],
+      [
+        "multi_sig",
+        "MultiSig"
+      ],
+      [
+        "action",
+        "Action"
+      ],
+      [
+        "from",
+        "AccountId"
+      ],
+      [
+        "token_symbol",
+        "TokenSymbol"
+      ]
+    ],
+    "type": "struct"
+  },
+  "ProducerSchedule": {
+    "type_mapping": [
+      [
+        "version",
+        "u32"
+      ],
+      [
+        "producers",
+        "Vec<ProducerKey>"
+      ]
+    ],
+    "type": "struct"
+  },
+  "BridgeAssetSymbol": {
+    "type_mapping": [
+      [
+        "blockchain",
+        "BlockchainType"
+      ],
+      [
+        "symbol",
+        "Vec<u8>"
+      ],
+      [
+        "precision",
+        "Precision"
+      ]
+    ],
+    "type": "struct"
+  },
+  "PoolDetails": {
+    "type_mapping": [
+      [
+        "owner",
+        "AccountId"
+      ],
+      [
+        "swap_fee_rate",
+        "Fee"
+      ],
+      [
+        "active",
+        "bool"
+      ]
+    ],
+    "type": "struct"
+  },
+  "ActionReceipt": {
+    "type_mapping": [
+      [
+        "receiver",
+        "AccountName"
+      ],
+      [
+        "act_digest",
+        "Checksum256"
+      ],
+      [
+        "global_sequence",
+        "u64"
+      ],
+      [
+        "recv_sequence",
+        "u64"
+      ],
+      [
+        "auth_sequence",
+        "FlatMap<AccountName, u64>"
+      ],
+      [
+        "code_sequence",
+        "UnsignedInt"
+      ],
+      [
+        "abi_sequence",
+        "UnsignedInt"
+      ]
+    ],
+    "type": "struct"
+  },
+  "VTokenPool": "Balance",
+  "TokenSymbol": {
+    "value_list": [
+      "aUSD",
+      "DOT",
+      "vDOT",
+      "KSM",
+      "vKSM",
+      "EOS",
+      "vEOS",
+      "IOST",
+      "vIOST"
+    ],
+    "type": "enum"
+  },
+  "KeyWeight": {
+    "type_mapping": [
+      [
+        "key",
+        "PublicKey"
+      ],
+      [
+        "weight",
+        "u16"
+      ]
+    ],
+    "type": "struct"
+  },
+  "ProxyValidatorRegister": {
+    "type_mapping": [
+      [
+        "last_block",
+        "BlockNumber"
+      ],
+      [
+        "deposit",
+        "Balance"
+      ],
+      [
+        "need",
+        "Balance"
+      ],
+      [
+        "staking",
+        "Balance"
+      ],
+      [
+        "reward_per_block",
+        "Balance"
+      ],
+      [
+        "validator_address",
+        "Vec<u8>"
+      ]
+    ],
+    "type": "struct"
+  },
+  "Extension": "(u16, Vec<u8>)",
+  "InVariantPool": "Balance",
+  "Income": "u128",
+  "BlockSigningAuthority": "(UnsignedInt, BlockSigningAuthorityV0)",
+  "PoolCreateTokenDetails": {
+    "type_mapping": [
+      [
+        "token_id",
+        "TokenSymbol"
+      ],
+      [
+        "token_balance",
+        "Balance"
+      ],
+      [
+        "token_weight",
+        "PoolWeight"
+      ]
+    ],
+    "type": "struct"
+  },
+  "ConvertPool": {
+    "type_mapping": [
+      [
+        "token_pool",
+        "Balance"
+      ],
+      [
+        "vtoken_pool",
+        "Balance"
+      ],
+      [
+        "current_reward",
+        "Balance"
+      ],
+      [
+        "pending_reward",
+        "Balance"
+      ]
+    ],
+    "type": "struct"
+  },
+  "FlatMap": {
+    "type_mapping": [
+      [
+        "map",
+        "Vec<(ActionName, u64)>"
+      ]
+    ],
+    "type": "struct"
+  },
+  "RequestIdentifier": "u64",
+  "AccountName": "u64",
+  "BlockchainType": {
+    "value_list": [
+      "BIFROST",
+      "EOS",
+      "IOST"
+    ],
+    "type": "enum"
+  },
+  "Token": {
+    "type_mapping": [
+      [
+        "symbol",
+        "Vec<u8>"
+      ],
+      [
+        "precision",
+        "u16"
+      ],
+      [
+        "totalSupply",
+        "u128"
+      ]
+    ],
+    "type": "struct"
+  },
+  "producerSignature": {
+    "type_mapping": [
+      [
+        "type_",
+        "UnsignedInt"
+      ],
+      [
+        "data",
+        "[u8;65]"
+      ]
+    ],
+    "type": "struct"
+  },
+  "Action": {
+    "type_mapping": [
+      [
+        "account",
+        "AccountName"
+      ],
+      [
+        "name",
+        "ActionName"
+      ],
+      [
+        "authorization",
+        "Vec<PermissionLevel>"
+      ],
+      [
+        "data",
+        "Vec<u8>"
+      ]
+    ],
+    "type": "struct"
+  },
+  "InvariantValue": "Balance",
+  "TransactionStatus": {
+    "value_list": [
+      "Initialized",
+      "Created",
+      "SignComplete",
+      "Sent",
+      "Succeeded",
+      "Failed"
+    ],
+    "type": "enum"
+  },
+  "PermissionName": "u64",
+  "Checksum256Array": "Vec<Checksum256>",
+  "PoolId": "u32",
+  "IostAction": {
+    "type_mapping": [
+      [
+        "contract",
+        "Vec<u8>"
+      ],
+      [
+        "action_name",
+        "Vec<u8>"
+      ],
+      [
+        "data",
+        "Vec<u8>"
+      ]
+    ],
+    "type": "struct"
+  },
+  "BlockTimestamp": "(u32)",
+  "Sent": {
+    "type_mapping": [
+      [
+        "tx_id",
+        "Vec<u8>"
+      ],
+      [
+        "from",
+        "AccountId"
+      ],
+      [
+        "token_symbol",
+        "TokenSymbol"
+      ]
+    ],
+    "type": "struct"
+  },
+  "BlockNumber": "u32",
+  "PublicKey": {
+    "type_mapping": [
+      [
+        "type_",
+        "UnsignedInt"
+      ],
+      [
+        "data",
+        "[u8;33]"
+      ]
+    ],
+    "type": "struct"
+  },
+  "VersionId": "u32",
+  "Cost": "u128",
+  "BlockSigningAuthorityV0": {
+    "type_mapping": [
+      [
+        "threshold",
+        "u32"
+      ],
+      [
+        "keys",
+        "Vec<KeyWeight>"
+      ]
+    ],
+    "type": "struct"
+  },
+  "SignedBlockHeader": {
+    "type_mapping": [
+      [
+        "block_header",
+        "BlockHeader"
+      ],
+      [
+        "producer_signature",
+        "producerSignature"
+      ]
+    ],
+    "type": "struct"
+  },
+  "TxSig": {
+    "type_mapping": [
+      [
+        "signature",
+        "Vec<u8>"
+      ],
+      [
+        "author",
+        "AccountId"
+      ]
+    ],
+    "type": "struct"
+  },
+  "AssetId": "u32"
+}
