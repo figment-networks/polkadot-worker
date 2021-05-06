@@ -38,6 +38,7 @@ const (
 	RequestCurrentEra
 	RequestParentMetadata
 	RequestParentRuntimeVersion
+	RequestSystemAccount
 )
 
 // PolkadotTypeSystemEvents is literally  `xxhash("System",128) + xxhash("Events",128)`
@@ -106,18 +107,36 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 	}
 
 	// pair transactions with ids
+	var found bool
 	for k, t := range transactions {
+		found = false
+	TXS_LOOP:
 		for extIndex, rawTx := range txs {
 			if t.Hash[2:] == rawTx.ExtrinsicHash {
+				found = true
 				for in, ev := range t.Events {
 					ev.ID = fmt.Sprintf("%d-%d", block.Height, extIndex)
 					t.Events[in] = ev
+				}
+				transactions[k] = t
+				break TXS_LOOP
+			}
+		}
+		if !found {
+			if len(txs) >= k+1 {
+				candidateTx := txs[k]
+				for in, ev := range t.Events {
+					if candidateTx.CallModule.Name == ev.Module {
+						ev.ID = fmt.Sprintf("%d-%d", block.Height, k)
+						t.Events[in] = ev
+					}
 				}
 				transactions[k] = t
 			}
 		}
 	}
 
+	//	getAccount(c.serverConn, ch, meta, 4941784, "19W6iAE2aBQyVHC1E7hD89juYQQAyxoSoaiTYTSFWgWiLoH", int(meta.Spec))
 	logger.Debug("Finished ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
 	return block, transactions, nil
 }
