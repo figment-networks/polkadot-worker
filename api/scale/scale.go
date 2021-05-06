@@ -182,3 +182,17 @@ type PolkaBlockContents struct {
 type BlockHeader struct {
 	Number string `json:"number"`
 }
+
+type PolkaAccountInfo struct {
+	Nonce     uint32           `json:"nonce"`
+	Consumers uint32           `json:"consumers"`
+	Providers uint32           `json:"providers"`
+	Data      PolkaAccountData `json:"data"`
+}
+
+type PolkaAccountData struct {
+	Free       string `json:"free"`
+	Reserved   string `json:"reserved"`
+	MiscFrozen string `json:"miscFrozen"`
+	FeeFrozen  string `json:"feeFrozen"`
+}
