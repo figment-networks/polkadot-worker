@@ -31,11 +31,23 @@ build: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.GitSHA=$(GIT_SHA)
 build:
 	go build -o worker -ldflags '$(LDFLAGS)'  ./cmd/polkadot-worker
 
+
+.PHONY: build-live
+build-live: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.Timestamp=$(shell date +%s)
+build-live: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.Version=$(VERSION)
+build-live: LDFLAGS += -X $(MODULE)/cmd/polkadot-worker/config.GitSHA=$(GIT_SHA)
+build-live:
+	go build -o worker-live -ldflags '$(LDFLAGS)'  ./cmd/polkadot-live
+
+
+
 .PHONY: pack-release
 pack-release:
 	@mkdir -p ./release
 	@make build
 	@mv ./worker ./release/worker
+	@make build-live
+	@mv ./worker-live ./release/worker-live
 	@zip -r polkadot-worker ./release
 	@rm -rf ./release
 
