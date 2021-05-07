@@ -1,0 +1,66 @@
+{
+  "Keys": "SessionKeysPolkadot",
+  "U256": "[u8; 32]",
+  "Difficulty": "U256",
+  "weight": "u64",
+  "DifficultyAndTimestamp": {
+    "type": "struct",
+    "type_mapping": [
+      [
+        "difficulty",
+        "Difficulty"
+      ],
+      [
+        "timestamp",
+        "Moment"
+      ]
+    ]
+  },
+  "ReferendumInfo<BlockNumber, Hash, BalanceOf>": {
+    "type": "enum",
+    "type_mapping": [
+      [
+        "Ongoing",
+        "ReferendumStatus"
+      ],
+      [
+        "Finished",
+        "ReferendumInfoFinished"
+      ]
+    ]
+  },
+  "Era": {
+    "type": "struct",
+    "type_mapping": [
+      [
+        "genesisBlockHash",
+        "H256"
+      ],
+      [
+        "finalBlockHash",
+        "H256"
+      ],
+      [
+        "finalStateRoot",
+        "H256"
+      ]
+    ]
+  },
+  "DispatchResult": {
+    "type": "enum",
+    "type_mapping": [
+      [
+        "Ok",
+        "Null"
+      ],
+      [
+        "Error",
+        "DispatchError"
+      ]
+    ]
+  },
+  "RefCount#10-?": "u32",
+  "Address#13-?": "MultiAddress",
+  "LookupSource#13-?": "MultiAddress",
+  "Box<<T as Config>::Call>": "Call"
+}

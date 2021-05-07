@@ -3,18 +3,26 @@ package indexer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/figment-networks/polkadot-worker/api"
+	"github.com/figment-networks/polkadot-worker/api/scale"
 	"github.com/figment-networks/polkadot-worker/mapper"
+
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
 
 	"github.com/figment-networks/indexer-manager/structs"
 
 	"go.uber.org/zap"
+)
+
+var (
+	mutex = sync.Mutex{}
 )
 
 const (
@@ -31,6 +39,7 @@ const (
 	RequestCurrentEra
 	RequestParentMetadata
 	RequestParentRuntimeVersion
+	RequestSystemAccount
 )
 
 // PolkadotTypeSystemEvents is literally  `xxhash("System",128) + xxhash("Events",128)`
@@ -62,11 +71,24 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 		return nil, nil, fmt.Errorf("error unmarshaling block data: %w", err)
 	}
 
-	ddr, err := getOthers(blH, pBlH, gpBLH, c.serverConn, ch)
+	ddr, pblock, prv, err := getOthers(blH, pBlH, gpBLH, c.serverConn, ch)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error unmarshaling block data: %w", err)
 	}
 	ddr.BlockHash = blH
+
+	meta, err := c.getMetadata(c.serverConn, ch, gpBLH, prv.SpecName, uint(prv.SpecVersion))
+	if err != nil {
+		return nil, nil, fmt.Errorf("error while getting metadata: %w", err)
+	}
+
+	ddr.MetadataParent = make([]byte, len(meta.Bytes))
+	copy(ddr.MetadataParent, meta.Bytes)
+
+	txs, err := getTransactionsForHeight(c.ds, pblock, meta, int(prv.SpecVersion))
+	if err != nil {
+		return nil, nil, fmt.Errorf("error getTransactionsForHeight: %w", err)
+	}
 
 	resp, err := c.proxy.DecodeData(ctx, ddr, height)
 	if err != nil {
@@ -85,34 +107,60 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 		return nil, nil, fmt.Errorf("error while mapping transactions: %w", err)
 	}
 
+	// pair transactions with ids
+	var found bool
+	for k, t := range transactions {
+		found = false
+	TXS_LOOP:
+		for extIndex, rawTx := range txs {
+			if t.Hash[2:] == rawTx.ExtrinsicHash {
+				found = true
+				for in, ev := range t.Events {
+					ev.ID = fmt.Sprintf("%d-%d", block.Height, extIndex)
+					t.Events[in] = ev
+				}
+				transactions[k] = t
+				break TXS_LOOP
+			}
+		}
+		if !found {
+			if len(txs) >= k+1 {
+				candidateTx := txs[k]
+				for in, ev := range t.Events {
+					if strings.ToLower(candidateTx.CallModule.Name) == ev.Module && ev.Kind == "Extrinsic" {
+						ev.ID = fmt.Sprintf("%d-%d", block.Height, k)
+						t.Events[in] = ev
+					}
+				}
+				transactions[k] = t
+			}
+		}
+	}
+
 	logger.Debug("Finished ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
 	return block, transactions, nil
-}
-
-type BlockHeader struct {
-	Number string `json:"number"`
 }
 
 func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response) (height uint64, err error) {
 	conn.Send(ch, RequestFinalizedHead, "chain_getFinalizedHead", nil)
 	resp := <-ch
 	if resp.Error != nil {
-		return 0, fmt.Errorf("response from ws is wrong: %s ", resp.Error)
+		return 0, fmt.Errorf("response from ws is wrong (chain_getFinalizedHead): %s ", resp.Error)
 	}
 
 	conn.Send(ch, RequestTopHeader, "chain_getHeader", []interface{}{resp.Result})
 	header := <-ch
 	if header.Error != nil {
-		return 0, fmt.Errorf("response from ws is wrong: %s ", resp.Error)
+		return 0, fmt.Errorf("response from ws is wrong (chain_getHeader): %s ", resp.Error)
 	}
 
-	bH := &BlockHeader{}
+	bH := &scale.BlockHeader{}
 	if err := json.Unmarshal(header.Result, bH); err != nil {
 		return 0, err
 	}
 
 	if bH.Number == "" {
-		return 0, fmt.Errorf("response from ws is wrong: %s ", string(header.Result))
+		return 0, fmt.Errorf("response from ws is wrong (Number is empty): %s ", string(header.Result))
 	}
 
 	numberStr := strings.Replace(bH.Number, "0x", "", -1)
@@ -127,6 +175,38 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 		cache.BlockHashCacheLock.Unlock()
 	}
 	return height, err
+}
+
+func getTransactionsForHeight(ds *scale.DecodeStorage, block *scale.PolkaBlock, meta *scale.MDecoder, specVer int) (transactions []scale.ScaleExtrinsic, err error) {
+	for _, extrinsicRaw := range block.Contents.Extrinsics {
+		eDec, err := ds.GetExtrinsic(extrinsicRaw, &meta.Decoder.Metadata, specVer)
+		if err != nil {
+			return transactions, err
+		}
+		transactions = append(transactions, eDec)
+	}
+	return transactions, err
+}
+
+func (c *Client) getMetadata(conn PolkaClient, ch chan api.Response, blockHash, specName string, specVer uint) (meta *scale.MDecoder, err error) {
+
+	mDec, ok, err := c.ds.GetMDecoder(specName, specVer)
+	if err != nil {
+		return nil, err
+	}
+
+	if ok {
+		return mDec, nil
+	}
+
+	conn.Send(ch, RequestParentMetadata, "state_getMetadata", []interface{}{blockHash})
+	res := <-ch
+	if res.Error != nil {
+		return nil, res.Error
+	}
+
+	s := string(res.Result)
+	return c.ds.SetMetadataDecoder(specVer, []byte(s[1:len(s)-1]))
 }
 
 func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan api.Response) (blockHash, parentHash, grandparentHash string, err error) {
@@ -187,15 +267,27 @@ func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 
 		switch blockHashResp.ID {
 		case RequestBlockHash:
-			blockHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
-			cache.BlockHashCacheLock.Lock()
-			bh := blockHash
-			cache.BlockHashCache.Add(height, bh)
-			cache.BlockHashCacheLock.Unlock()
+			if len(blockHashResp.Result) == 0 {
+				err = errors.New("block hash is empty ")
+			} else {
+				blockHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
+				cache.BlockHashCacheLock.Lock()
+				bh := blockHash
+				cache.BlockHashCache.Add(height, bh)
+				cache.BlockHashCacheLock.Unlock()
+			}
 		case RequestParentBlockHash:
-			parentHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
+			if len(blockHashResp.Result) == 0 {
+				err = errors.New("parent hash is empty ")
+			} else {
+				parentHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
+			}
 		case RequestGrandparentBlockHash:
-			grandparentHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
+			if len(blockHashResp.Result) == 0 {
+				err = errors.New("grandparent hash is empty ")
+			} else {
+				grandparentHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
+			}
 		}
 
 		if i == expected {
@@ -217,7 +309,7 @@ func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 	return blockHash, parentHash, grandparentHash, err
 }
 
-func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn PolkaClient, ch chan api.Response) (ddr wStructs.DecodeDataRequest, err error) {
+func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn PolkaClient, ch chan api.Response) (ddr wStructs.DecodeDataRequest, block *scale.PolkaBlock, prm *scale.PolkaRuntimeVersion, err error) {
 
 	conn.Send(ch, RequestSystemChain, "system_chain", []interface{}{})
 	conn.Send(ch, RequestBlock, "chain_getBlock", []interface{}{blockHash})
@@ -228,11 +320,11 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 	conn.Send(ch, RequestNextFeeMultipier, "state_getStorage", []interface{}{PolkadotTypeNextFeeMultiplier, parentBlockHash})
 	conn.Send(ch, RequestCurrentEra, "state_getStorage", []interface{}{PolkadotTypeCurrentEra, parentBlockHash})
 
-	conn.Send(ch, RequestParentMetadata, "state_getMetadata", []interface{}{grandParentBlockHash})
 	conn.Send(ch, RequestParentRuntimeVersion, "state_getRuntimeVersion", []interface{}{grandParentBlockHash})
 
 	ddr = wStructs.DecodeDataRequest{}
-
+	block = &scale.PolkaBlock{}
+	prm = &scale.PolkaRuntimeVersion{}
 	var i uint8
 	for res := range ch {
 		if res.Error != nil {
@@ -250,12 +342,11 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 		case "chain_getBlock":
 			s := string(res.Result)
 			ddr.Block = []byte(s[1 : len(s)-1])
-		case "state_getMetadata":
-			s := string(res.Result)
-			ddr.MetadataParent = []byte(s[1 : len(s)-1])
+			err = json.Unmarshal(res.Result, block)
 		case "state_getRuntimeVersion":
 			s := string(res.Result)
 			ddr.RuntimeParent = []byte(s[1 : len(s)-1])
+			err = json.Unmarshal(res.Result, prm)
 		case "state_getStorage":
 			switch res.ID {
 			case RequestNextFeeMultipier:
@@ -273,11 +364,11 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 			}
 		}
 
-		if i == 7 {
+		if i == 6 {
 			break
 		}
 		i++
 	}
 
-	return ddr, err
+	return ddr, block, prm, err
 }
