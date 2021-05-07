@@ -18,17 +18,18 @@ import (
 func (c *Client) GetAccount(ctx context.Context, logger *zap.Logger, height uint64, accountID string) (pai scale.PolkaAccountInfo, err error) {
 	now := time.Now()
 	ch := c.gbPool.Get()
-	defer c.gbPool.Put(ch)
 
 	if height == 0 {
 		height, err = getLatestHeight(c.serverConn, c.Cache, ch)
 		if err != nil {
+			c.gbPool.Put(ch)
 			return pai, fmt.Errorf("error getting latest height : %w", err)
 		}
 	}
 
 	blH, _, _, err := getBlockHashes(height, c.serverConn, c.Cache, ch)
 	if err != nil {
+		c.gbPool.Put(ch)
 		return pai, fmt.Errorf("error unmarshaling block data: %w", err)
 	}
 
@@ -40,33 +41,63 @@ RuntimeVersionLoop:
 		select {
 		case resp := <-ch:
 			if resp.Error != nil {
+				c.gbPool.Put(ch)
 				return pai, fmt.Errorf("response from ws is wrong: %s ", resp.Error)
 			}
 			if resp.Type != "state_getRuntimeVersion" {
+				c.gbPool.Put(ch)
 				return pai, errors.New("wrong data returned")
 			}
 			if len(resp.Result) == 0 {
+				c.gbPool.Put(ch)
 				return pai, fmt.Errorf("response from ws is empty")
 			}
-
 			err = json.Unmarshal(resp.Result, prm)
 			break RuntimeVersionLoop
-		case <-time.After(time.Second * 10):
-			return pai, errors.New("timeout on state_getRuntimeVersion after 10 seconds")
+		case <-time.After(time.Second * 30):
+			go cleanupTimeoutedCh(logger, ch, 1)
+			return pai, errors.New("timeout on state_getRuntimeVersion after 30 seconds")
 		}
 	}
 
 	meta, err := c.getMetadata(c.serverConn, ch, blH, prm.SpecName, uint(prm.SpecVersion))
 	if err != nil {
+		c.gbPool.Put(ch)
 		return pai, fmt.Errorf("error while getting metadata: %w", err)
 	}
 
-	pai, err = getAccountData(c.serverConn, ch, meta, int(prm.SpecVersion), blH, accountID)
+	pai, err = getAccountData(logger, c.serverConn, ch, meta, int(prm.SpecVersion), blH, accountID)
 	logger.Debug("Finished ", zap.String("account", accountID), zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
+
+	c.gbPool.Put(ch)
 	return pai, err
 }
 
-func getAccountData(conn PolkaClient, ch chan api.Response, meta *scale.MDecoder, specVer int, blockHash string, accountID string) (pai scale.PolkaAccountInfo, err error) {
+func cleanupTimeoutedCh(logger *zap.Logger, ch chan api.Response, num uint) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Info("Recovered panic from timeout")
+		}
+	}()
+
+	var i uint
+CLEANUP_LOOP:
+	for {
+		select {
+		case <-time.After(10 * time.Minute):
+			break CLEANUP_LOOP
+		case <-ch:
+			i++
+			if i == num {
+				break CLEANUP_LOOP
+			}
+		}
+	}
+
+	close(ch)
+}
+
+func getAccountData(logger *zap.Logger, conn PolkaClient, ch chan api.Response, meta *scale.MDecoder, specVer int, blockHash string, accountID string) (pai scale.PolkaAccountInfo, err error) {
 
 	aReq, err := scale.AccountRequest(accountID)
 	if err != nil {
@@ -92,8 +123,9 @@ RuntimeVersionLoop:
 
 			respData = string(resp.Result[1 : len(resp.Result)-1])
 			break RuntimeVersionLoop
-		case <-time.After(time.Second * 10):
-			return pai, errors.New("timeout on state_getStorage after 10 seconds")
+		case <-time.After(time.Second * 30):
+			go cleanupTimeoutedCh(logger, ch, 1)
+			return pai, errors.New("timeout on state_getStorage after 30 seconds")
 		}
 	}
 
