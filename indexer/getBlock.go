@@ -3,6 +3,7 @@ package indexer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -126,7 +127,7 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 			if len(txs) >= k+1 {
 				candidateTx := txs[k]
 				for in, ev := range t.Events {
-					if candidateTx.CallModule.Name == ev.Module {
+					if strings.ToLower(candidateTx.CallModule.Name) == ev.Module && ev.Kind == "Extrinsic" {
 						ev.ID = fmt.Sprintf("%d-%d", block.Height, k)
 						t.Events[in] = ev
 					}
@@ -136,7 +137,6 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 		}
 	}
 
-	//	getAccount(c.serverConn, ch, meta, 4941784, "19W6iAE2aBQyVHC1E7hD89juYQQAyxoSoaiTYTSFWgWiLoH", int(meta.Spec))
 	logger.Debug("Finished ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
 	return block, transactions, nil
 }
@@ -145,13 +145,13 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 	conn.Send(ch, RequestFinalizedHead, "chain_getFinalizedHead", nil)
 	resp := <-ch
 	if resp.Error != nil {
-		return 0, fmt.Errorf("response from ws is wrong: %s ", resp.Error)
+		return 0, fmt.Errorf("response from ws is wrong (chain_getFinalizedHead): %s ", resp.Error)
 	}
 
 	conn.Send(ch, RequestTopHeader, "chain_getHeader", []interface{}{resp.Result})
 	header := <-ch
 	if header.Error != nil {
-		return 0, fmt.Errorf("response from ws is wrong: %s ", resp.Error)
+		return 0, fmt.Errorf("response from ws is wrong (chain_getHeader): %s ", resp.Error)
 	}
 
 	bH := &scale.BlockHeader{}
@@ -160,7 +160,7 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 	}
 
 	if bH.Number == "" {
-		return 0, fmt.Errorf("response from ws is wrong: %s ", string(header.Result))
+		return 0, fmt.Errorf("response from ws is wrong (Number is empty): %s ", string(header.Result))
 	}
 
 	numberStr := strings.Replace(bH.Number, "0x", "", -1)
@@ -267,15 +267,27 @@ func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 
 		switch blockHashResp.ID {
 		case RequestBlockHash:
-			blockHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
-			cache.BlockHashCacheLock.Lock()
-			bh := blockHash
-			cache.BlockHashCache.Add(height, bh)
-			cache.BlockHashCacheLock.Unlock()
+			if len(blockHashResp.Result) == 0 {
+				err = errors.New("block hash is empty ")
+			} else {
+				blockHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
+				cache.BlockHashCacheLock.Lock()
+				bh := blockHash
+				cache.BlockHashCache.Add(height, bh)
+				cache.BlockHashCacheLock.Unlock()
+			}
 		case RequestParentBlockHash:
-			parentHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
+			if len(blockHashResp.Result) == 0 {
+				err = errors.New("parent hash is empty ")
+			} else {
+				parentHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
+			}
 		case RequestGrandparentBlockHash:
-			grandparentHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
+			if len(blockHashResp.Result) == 0 {
+				err = errors.New("grandparent hash is empty ")
+			} else {
+				grandparentHash = string(blockHashResp.Result[1 : len(blockHashResp.Result)-1])
+			}
 		}
 
 		if i == expected {
