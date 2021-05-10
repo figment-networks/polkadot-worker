@@ -8,11 +8,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadot-worker/api/scale"
 	"go.uber.org/zap"
 )
 
-//func (c *Client) getAccount(ctx context.Context, logger *zap.Logger, height uint64, accountID string) (pai scale.PolkaAccountInfo, err error) {
+var (
+	getAccountDuration *metrics.GroupObserver
+)
 
 type retrieveClienter interface {
 	GetAccount(ctx context.Context, logger *zap.Logger, height uint64, accountID string) (pai scale.PolkaAccountInfo, err error)
@@ -26,6 +29,7 @@ type Connector struct {
 
 // NewConnector is  Connector constructor
 func NewConnector(cli retrieveClienter, logger *zap.Logger) *Connector {
+	getAccountDuration = endpointDuration.WithLabels("getAccount")
 	return &Connector{cli, logger}
 }
 
@@ -38,7 +42,8 @@ func (c *Connector) AttachToHandler(mux *http.ServeMux) {
 
 // GetAccount is http handler for GetTransactions method
 func (c *Connector) GetAccount(w http.ResponseWriter, req *http.Request) {
-
+	timer := metrics.NewTimer(getAccountDuration)
+	defer timer.ObserveDuration()
 	var (
 		intHeight uint64
 		err       error

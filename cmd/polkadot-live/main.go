@@ -76,7 +76,6 @@ func main() {
 	}
 
 	connApi := api.NewConn(logger.GetLogger())
-
 	polkaNodes := strings.Split(cfg.PolkadotNodeAddrs, ",")
 	for _, address := range polkaNodes {
 		go connApi.Run(ctx, address)
@@ -132,7 +131,7 @@ func handleHTTP(l *zap.Logger, cfg config.Config, mux *http.ServeMux) {
 		Addr:         cfg.Address + ":" + cfg.HTTPPort,
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		WriteTimeout: 40 * time.Second,
 	}
 
 	l.Info("[HTTP] Listening on", zap.String("address", cfg.Address), zap.String("port", cfg.HTTPPort))

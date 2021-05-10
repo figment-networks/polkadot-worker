@@ -1,5 +1,3 @@
-// +build profiling
-
 package main
 
 import (
