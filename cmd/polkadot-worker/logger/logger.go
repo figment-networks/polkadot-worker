@@ -43,6 +43,7 @@ func Init(encoding, logLevel string, logOutputs []string, rollbarConfig *Rollbar
 		Encoding:    "json",
 		Level:       lLev,
 		EncoderConfig: zapcore.EncoderConfig{
+			CallerKey:      "caller",
 			MessageKey:     "msg",
 			LevelKey:       "level",
 			TimeKey:        "time",
