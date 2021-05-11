@@ -66,7 +66,7 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 		}
 	}
 
-	blH, pBlH, gpBLH, err := getBlockHashes(height, c.serverConn, c.Cache, ch)
+	blH, pBlH, gpBLH, err := GetBlockHashes(height, c.serverConn, c.Cache, ch)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error unmarshaling block data: %w", err)
 	}
@@ -77,7 +77,7 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 	}
 	ddr.BlockHash = blH
 
-	meta, err := c.getMetadata(c.serverConn, ch, gpBLH, prv.SpecName, uint(prv.SpecVersion))
+	meta, err := c.GetMetadata(c.serverConn, ch, gpBLH, prv.SpecName, uint(prv.SpecVersion))
 	if err != nil {
 		return nil, nil, fmt.Errorf("error while getting metadata: %w", err)
 	}
@@ -85,7 +85,7 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 	ddr.MetadataParent = make([]byte, len(meta.Bytes))
 	copy(ddr.MetadataParent, meta.Bytes)
 
-	txs, err := getTransactionsForHeight(c.ds, pblock, meta, int(prv.SpecVersion))
+	txs, err := GetTransactionsForHeight(c.ds, pblock, meta, int(prv.SpecVersion))
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getTransactionsForHeight: %w", err)
 	}
@@ -177,7 +177,7 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 	return height, err
 }
 
-func getTransactionsForHeight(ds *scale.DecodeStorage, block *scale.PolkaBlock, meta *scale.MDecoder, specVer int) (transactions []scale.ScaleExtrinsic, err error) {
+func GetTransactionsForHeight(ds *scale.DecodeStorage, block *scale.PolkaBlock, meta *scale.MDecoder, specVer int) (transactions []scale.ScaleExtrinsic, err error) {
 	for _, extrinsicRaw := range block.Contents.Extrinsics {
 		eDec, err := ds.GetExtrinsic(extrinsicRaw, &meta.Decoder.Metadata, specVer)
 		if err != nil {
@@ -188,7 +188,7 @@ func getTransactionsForHeight(ds *scale.DecodeStorage, block *scale.PolkaBlock, 
 	return transactions, err
 }
 
-func (c *Client) getMetadata(conn PolkaClient, ch chan api.Response, blockHash, specName string, specVer uint) (meta *scale.MDecoder, err error) {
+func (c *Client) GetMetadata(conn PolkaClient, ch chan api.Response, blockHash, specName string, specVer uint) (meta *scale.MDecoder, err error) {
 
 	mDec, ok, err := c.ds.GetMDecoder(specName, specVer)
 	if err != nil {
@@ -209,7 +209,7 @@ func (c *Client) getMetadata(conn PolkaClient, ch chan api.Response, blockHash, 
 	return c.ds.SetMetadataDecoder(specVer, []byte(s[1:len(s)-1]))
 }
 
-func getBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan api.Response) (blockHash, parentHash, grandparentHash string, err error) {
+func GetBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan api.Response) (blockHash, parentHash, grandparentHash string, err error) {
 	var (
 		expected uint8
 	)
