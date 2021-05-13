@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
@@ -78,8 +79,9 @@ func main() {
 	connApi := api.NewConn(logger.GetLogger())
 	polkaNodes := strings.Split(cfg.PolkadotNodeAddrs, ",")
 	for _, address := range polkaNodes {
-		go connApi.Run(ctx, address)
+		go connApi.Run(ctx, address, time.Second*30)
 	}
+	go connApi.HealthCheck(ctx, time.Second*10, handleWSHealthcheckRequest, handleWSHealthcheckResponse)
 
 	ds := scale.NewDecodeStorage()
 	specName := cfg.ChainID
@@ -138,4 +140,29 @@ func handleHTTP(l *zap.Logger, cfg config.Config, mux *http.ServeMux) {
 	if err := s.ListenAndServe(); err != nil {
 		l.Error("[GRPC] Error while listening ", zap.String("address", cfg.Address), zap.String("port", cfg.HTTPPort), zap.Error(err))
 	}
+}
+
+func handleWSHealthcheckRequest(id uint64) api.JsonRPCRequest {
+	return api.JsonRPCRequest{ID: id, Method: "system_health"}
+}
+
+type chResponse struct {
+	IsSyncing       bool   `json:"isSyncing"`
+	Peers           uint64 `json:"peers"`
+	ShouldHavePeers bool   `json:"shouldHavePeers"`
+}
+
+func handleWSHealthcheckResponse(response api.Response) bool {
+
+	r := &chResponse{}
+	err := json.Unmarshal(response.Result, r)
+	if err != nil {
+		return false
+	}
+
+	if r.ShouldHavePeers && r.Peers == 0 {
+		return false
+	}
+
+	return true
 }

@@ -34,7 +34,10 @@ func (c *Client) GetAccount(ctx context.Context, logger *zap.Logger, height uint
 	}
 
 	prm := &scale.PolkaRuntimeVersion{}
-	c.serverConn.Send(ch, RequestParentRuntimeVersion, "state_getRuntimeVersion", []interface{}{blH})
+	err = c.serverConn.Send(ch, RequestParentRuntimeVersion, "state_getRuntimeVersion", []interface{}{blH})
+	if err != nil {
+		return pai, err
+	}
 
 RuntimeVersionLoop:
 	for {
@@ -104,7 +107,10 @@ func getAccountData(logger *zap.Logger, conn PolkaClient, ch chan api.Response, 
 		return pai, nil
 	}
 
-	conn.Send(ch, RequestSystemAccount, "state_getStorage", []interface{}{aReq, blockHash})
+	err = conn.Send(ch, RequestSystemAccount, "state_getStorage", []interface{}{aReq, blockHash})
+	if err != nil {
+		return pai, err
+	}
 
 	var respData string
 RuntimeVersionLoop:

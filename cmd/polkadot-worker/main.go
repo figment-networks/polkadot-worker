@@ -106,7 +106,7 @@ func main() {
 
 	polkaNodes := strings.Split(cfg.PolkadotNodeAddrs, ",")
 	for _, address := range polkaNodes {
-		go connApi.Run(ctx, address)
+		go connApi.Run(ctx, address, time.Minute)
 	}
 
 	ds := scale.NewDecodeStorage()

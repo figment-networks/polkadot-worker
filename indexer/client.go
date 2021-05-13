@@ -42,7 +42,7 @@ type ClientIface interface {
 }
 
 type PolkaClient interface {
-	Send(resp chan api.Response, id uint64, method string, params []interface{})
+	Send(resp chan api.Response, id uint64, method string, params []interface{}) error
 }
 
 const page = 100

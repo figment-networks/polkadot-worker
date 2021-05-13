@@ -142,13 +142,19 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 }
 
 func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response) (height uint64, err error) {
-	conn.Send(ch, RequestFinalizedHead, "chain_getFinalizedHead", nil)
+	err = conn.Send(ch, RequestFinalizedHead, "chain_getFinalizedHead", nil)
+	if err != nil {
+		return 0, err
+	}
 	resp := <-ch
 	if resp.Error != nil {
 		return 0, fmt.Errorf("response from ws is wrong (chain_getFinalizedHead): %s ", resp.Error)
 	}
 
-	conn.Send(ch, RequestTopHeader, "chain_getHeader", []interface{}{resp.Result})
+	err = conn.Send(ch, RequestTopHeader, "chain_getHeader", []interface{}{resp.Result})
+	if err != nil {
+		return 0, err
+	}
 	header := <-ch
 	if header.Error != nil {
 		return 0, fmt.Errorf("response from ws is wrong (chain_getHeader): %s ", resp.Error)
@@ -199,7 +205,10 @@ func (c *Client) GetMetadata(conn PolkaClient, ch chan api.Response, blockHash, 
 		return mDec, nil
 	}
 
-	conn.Send(ch, RequestParentMetadata, "state_getMetadata", []interface{}{blockHash})
+	err = conn.Send(ch, RequestParentMetadata, "state_getMetadata", []interface{}{blockHash})
+	if err != nil {
+		return nil, err
+	}
 	res := <-ch
 	if res.Error != nil {
 		return nil, res.Error
@@ -220,7 +229,10 @@ func GetBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 	if ok {
 		blockHash = HS.(string)
 	} else {
-		conn.Send(ch, RequestBlockHash, "chain_getBlockHash", []interface{}{height})
+		err = conn.Send(ch, RequestBlockHash, "chain_getBlockHash", []interface{}{height})
+		if err != nil {
+			return "", "", "", err
+		}
 		expected++
 	}
 
@@ -232,7 +244,10 @@ func GetBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 		if ok {
 			parentHash = pHS.(string)
 		} else {
-			conn.Send(ch, RequestParentBlockHash, "chain_getBlockHash", []interface{}{height - 1})
+			err = conn.Send(ch, RequestParentBlockHash, "chain_getBlockHash", []interface{}{height - 1})
+			if err != nil {
+				return "", "", "", err
+			}
 			expected++
 		}
 	}
@@ -245,7 +260,10 @@ func GetBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 		if ok {
 			grandparentHash = gpHS.(string)
 		} else {
-			conn.Send(ch, RequestGrandparentBlockHash, "chain_getBlockHash", []interface{}{height - 2})
+			err = conn.Send(ch, RequestGrandparentBlockHash, "chain_getBlockHash", []interface{}{height - 2})
+			if err != nil {
+				return "", "", "", err
+			}
 			expected++
 		}
 	}
@@ -311,16 +329,33 @@ func GetBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 
 func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn PolkaClient, ch chan api.Response) (ddr wStructs.DecodeDataRequest, block *scale.PolkaBlock, prm *scale.PolkaRuntimeVersion, err error) {
 
-	conn.Send(ch, RequestSystemChain, "system_chain", []interface{}{})
-	conn.Send(ch, RequestBlock, "chain_getBlock", []interface{}{blockHash})
+	if err = conn.Send(ch, RequestSystemChain, "system_chain", []interface{}{}); err != nil {
+		return ddr, block, prm, err
+	}
 
-	conn.Send(ch, RequestTimestamp, "state_getStorage", []interface{}{PolkadotTypeTimeNow, blockHash})
-	conn.Send(ch, RequestSystemEvents, "state_getStorage", []interface{}{PolkadotTypeSystemEvents, blockHash})
+	if err = conn.Send(ch, RequestBlock, "chain_getBlock", []interface{}{blockHash}); err != nil {
+		return ddr, block, prm, err
+	}
 
-	conn.Send(ch, RequestNextFeeMultipier, "state_getStorage", []interface{}{PolkadotTypeNextFeeMultiplier, parentBlockHash})
-	conn.Send(ch, RequestCurrentEra, "state_getStorage", []interface{}{PolkadotTypeCurrentEra, parentBlockHash})
+	if err = conn.Send(ch, RequestTimestamp, "state_getStorage", []interface{}{PolkadotTypeTimeNow, blockHash}); err != nil {
+		return ddr, block, prm, err
+	}
 
-	conn.Send(ch, RequestParentRuntimeVersion, "state_getRuntimeVersion", []interface{}{grandParentBlockHash})
+	if err = conn.Send(ch, RequestSystemEvents, "state_getStorage", []interface{}{PolkadotTypeSystemEvents, blockHash}); err != nil {
+		return ddr, block, prm, err
+	}
+
+	if err = conn.Send(ch, RequestNextFeeMultipier, "state_getStorage", []interface{}{PolkadotTypeNextFeeMultiplier, parentBlockHash}); err != nil {
+		return ddr, block, prm, err
+	}
+
+	if err = conn.Send(ch, RequestCurrentEra, "state_getStorage", []interface{}{PolkadotTypeCurrentEra, parentBlockHash}); err != nil {
+		return ddr, block, prm, err
+	}
+
+	if err = conn.Send(ch, RequestParentRuntimeVersion, "state_getRuntimeVersion", []interface{}{grandParentBlockHash}); err != nil {
+		return ddr, block, prm, err
+	}
 
 	ddr = wStructs.DecodeDataRequest{}
 	block = &scale.PolkaBlock{}
