@@ -27,7 +27,7 @@ func (c *Client) GetAccount(ctx context.Context, logger *zap.Logger, height uint
 		}
 	}
 
-	blH, _, _, err := getBlockHashes(height, c.serverConn, c.Cache, ch)
+	blH, _, _, err := GetBlockHashes(height, c.serverConn, c.Cache, ch)
 	if err != nil {
 		c.gbPool.Put(ch)
 		return pai, fmt.Errorf("error unmarshaling block data: %w", err)
@@ -60,7 +60,7 @@ RuntimeVersionLoop:
 		}
 	}
 
-	meta, err := c.getMetadata(c.serverConn, ch, blH, prm.SpecName, uint(prm.SpecVersion))
+	meta, err := c.GetMetadata(c.serverConn, ch, blH, prm.SpecName, uint(prm.SpecVersion))
 	if err != nil {
 		c.gbPool.Put(ch)
 		return pai, fmt.Errorf("error while getting metadata: %w", err)
