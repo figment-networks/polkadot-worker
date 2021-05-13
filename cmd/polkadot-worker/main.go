@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -108,6 +109,7 @@ func main() {
 	for _, address := range polkaNodes {
 		go connApi.Run(ctx, address, time.Minute)
 	}
+	go connApi.HealthCheck(ctx, time.Second*10, handleWSHealthcheckRequest, handleWSHealthcheckResponse)
 
 	ds := scale.NewDecodeStorage()
 	specName := cfg.ChainID
@@ -155,9 +157,7 @@ func getConfig(path string) (cfg *config.Config, err error) {
 
 func createIndexerClient(ctx context.Context, log *zap.Logger, cfg *config.Config, conns *proxy.GRPConnections, connApi *api.Conn, ds *scale.DecodeStorage) *indexer.Client {
 	rateLimiter := rate.NewLimiter(rate.Limit(cfg.ReqPerSecond), cfg.ReqPerSecond)
-	proxyClient := proxy.NewClient(log, rateLimiter, conns)
-
-	return indexer.NewClient(log, proxyClient, cfg.Exp, uint64(cfg.MaximumHeightsToGet), cfg.ChainID, cfg.Currency, connApi, ds)
+	return indexer.NewClient(log, proxy.NewClient(log, rateLimiter, conns), cfg.Exp, uint64(cfg.MaximumHeightsToGet), cfg.ChainID, cfg.Currency, connApi, ds)
 }
 
 func registerWorker(ctx context.Context, l *zap.Logger, cfg *config.Config) {
@@ -217,4 +217,29 @@ func serveGRPC(l *zap.Logger, cfg config.Config, client *indexer.Client) {
 	if err := grpcServer.Serve(lis); err != nil {
 		l.Error("[GRPC] Error while serving ", zap.String("address", cfg.Address), zap.String("port", cfg.Port), zap.Error(err))
 	}
+}
+
+func handleWSHealthcheckRequest(id uint64) api.JsonRPCRequest {
+	return api.JsonRPCRequest{ID: id, Method: "system_health"}
+}
+
+type chResponse struct {
+	IsSyncing       bool   `json:"isSyncing"`
+	Peers           uint64 `json:"peers"`
+	ShouldHavePeers bool   `json:"shouldHavePeers"`
+}
+
+func handleWSHealthcheckResponse(response api.Response) bool {
+
+	r := &chResponse{}
+	err := json.Unmarshal(response.Result, r)
+	if err != nil {
+		return false
+	}
+
+	if r.ShouldHavePeers && r.Peers == 0 {
+		return false
+	}
+
+	return true
 }
