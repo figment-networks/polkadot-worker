@@ -127,7 +127,7 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 		case "account", "approving", "authority_id", "multisig", "stash", "unvested", "target",
 			"sub", "main", "cancelling", "lost", "rescuer", "sender", "voter", "founder", "candidate",
 			"candidate_id", "vouching", "nominator", "validator", "finder", "real", "primary",
-			"restorer", "dest", "deployer", "contract", "creator", "owner":
+			"restorer", "dest", "deployer", "contract", "creator", "owner", "origin":
 			if accountID, err := getAccountID(eventData); err == nil {
 				if strings.ToLower(ev.Method) == "endowed" {
 					e.recipientAccountID = accountID
@@ -159,7 +159,7 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 			"timepoint", "when", "task", "id", "result", "judged", "era_index", "session_index", "total_supply",
 			"proposal_hash", "yes", "no", "proxy", "voted", "disambiguation_index", "proxy_type",
 			"anonymous", "kind", "timeslot", "applied", "offline", "candidates", "depositors", "ref_index",
-			"version", "code_hash", "data", "asset_id", "symbol", "decimals", "name", "max_zombies":
+			"version", "code_hash", "data", "asset_id", "symbol", "decimals", "name", "max_zombies", "remark_hash":
 			break
 		default:
 			return fmt.Errorf("Unknown value to parse event %q values: %v height: %d", v, values, height)
