@@ -15,6 +15,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var ErrTimeout = errors.New("timeout after 30 seconds")
+
 func (c *Client) GetAccount(ctx context.Context, logger *zap.Logger, height uint64, accountID string) (pai scale.PolkaAccountInfo, err error) {
 	now := time.Now()
 	ch := c.gbPool.Get()
@@ -36,6 +38,7 @@ func (c *Client) GetAccount(ctx context.Context, logger *zap.Logger, height uint
 	prm := &scale.PolkaRuntimeVersion{}
 	err = c.serverConn.Send(ch, RequestParentRuntimeVersion, "state_getRuntimeVersion", []interface{}{blH})
 	if err != nil {
+		c.gbPool.Put(ch) // (lukanus): only because we really know that Send won't pass this channel anywhere.
 		return pai, err
 	}
 
@@ -55,11 +58,14 @@ RuntimeVersionLoop:
 				c.gbPool.Put(ch)
 				return pai, fmt.Errorf("response from ws is empty")
 			}
-			err = json.Unmarshal(resp.Result, prm)
+			if err = json.Unmarshal(resp.Result, prm); err != nil {
+				c.gbPool.Put(ch)
+				return pai, fmt.Errorf("error unmarshaling state_getRuntimeVersion: %w", err)
+			}
 			break RuntimeVersionLoop
 		case <-time.After(time.Second * 30):
 			go cleanupTimeoutedCh(logger, ch, 1)
-			return pai, errors.New("timeout on state_getRuntimeVersion after 30 seconds")
+			return pai, ErrTimeout
 		}
 	}
 
@@ -71,8 +77,10 @@ RuntimeVersionLoop:
 
 	pai, err = getAccountData(logger, c.serverConn, ch, meta, int(prm.SpecVersion), blH, accountID)
 	logger.Debug("Finished ", zap.String("account", accountID), zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
+	if !errors.Is(err, ErrTimeout) { // timeout
+		c.gbPool.Put(ch)
+	}
 
-	c.gbPool.Put(ch)
 	return pai, err
 }
 
@@ -80,6 +88,7 @@ func cleanupTimeoutedCh(logger *zap.Logger, ch chan api.Response, num uint) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Info("Recovered panic from timeout")
+			logger.Sync()
 		}
 	}()
 
@@ -131,7 +140,7 @@ RuntimeVersionLoop:
 			break RuntimeVersionLoop
 		case <-time.After(time.Second * 30):
 			go cleanupTimeoutedCh(logger, ch, 1)
-			return pai, errors.New("timeout on state_getStorage after 30 seconds")
+			return pai, ErrTimeout
 		}
 	}
 
