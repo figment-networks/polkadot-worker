@@ -65,7 +65,7 @@ func main() {
 	connApi := api.NewConn(logger.GetLogger())
 	polkaNodes := strings.Split(polkadotAddrs, ",")
 	for _, address := range polkaNodes {
-		go connApi.Run(ctx, address)
+		go connApi.Run(ctx, address, time.Second*30)
 	}
 
 	ds := scale.NewDecodeStorage()

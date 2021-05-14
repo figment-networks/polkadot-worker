@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/figment-networks/polkadot-worker/api"
+	"github.com/figment-networks/polkadot-worker/api/scale"
 	"github.com/figment-networks/polkadot-worker/indexer"
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
 	"github.com/figment-networks/polkadot-worker/utils"
@@ -71,7 +72,13 @@ func (ic *IndexerClientTest) SetupTest() {
 	ic.CtxCancel = ctxCancel
 
 	ic.PolkaMock = PolkaClientMock{}
-	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, &ic.PolkaMock)
+
+	ds := scale.NewDecodeStorage()
+	if err := ds.Init("polkadot"); err != nil {
+		log.Fatal("Error creating decode storage", zap.Error(err))
+	}
+
+	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, &ic.PolkaMock, ds)
 	ic.ProxyClient = &proxyClientMock
 }
 
@@ -653,7 +660,7 @@ type PolkaClientMock struct {
 	rCount  int
 }
 
-func (pcm *PolkaClientMock) Send(resp chan api.Response, id uint64, method string, params []interface{}) {
+func (pcm *PolkaClientMock) Send(resp chan api.Response, id uint64, method string, params []interface{}) error {
 	response := pcm.rpcResp.Responses[pcm.rCount]
 	resp <- api.Response{
 		ID:     id,
@@ -661,6 +668,7 @@ func (pcm *PolkaClientMock) Send(resp chan api.Response, id uint64, method strin
 		Result: response.Result,
 	}
 	pcm.rCount++
+	return nil
 }
 
 func (ic *IndexerClientTest) getRpcResponses() {
