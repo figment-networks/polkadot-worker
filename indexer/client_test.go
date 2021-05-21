@@ -309,6 +309,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 		if s.Id.String() != ic.ReqID.String() {
 			continue
 		}
+		fmt.Println(s)
 
 		switch s.Type {
 		case "Block":

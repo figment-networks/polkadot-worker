@@ -293,6 +293,7 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 		})
 		return
 	}
+	// var height uint64 = 4441453
 
 	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, height)
 

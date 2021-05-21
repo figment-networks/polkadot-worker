@@ -21,47 +21,36 @@ import (
 	"google.golang.org/grpc"
 )
 
-type BlockClientTest struct {
+type ClientTest struct {
 	suite.Suite
 
+	*connMock
 	*proxy.Client
-
-	AccountClientMock     *accountClientMock
-	BlockClientMock       *blockClientMock
-	ChainClientMock       *chainClientMock
-	DecodeClientMock      *decodeClientMock
-	EventClientMock       *eventClientMock
-	TransactionClientMock *transactionClientMock
 }
 
-func (bc *BlockClientTest) SetupTest() {
+func (c *ClientTest) SetupTest() {
 	logger, err := zap.NewDevelopment()
-	bc.Require().Nil(err)
+	c.Require().Nil(err)
 
 	rateLimiter := rate.NewLimiter(rate.Limit(100), 100)
 
-	bc.Client = proxy.NewClient(
+	c.connMock = &connMock{
+		AccountClientMock:     &accountClientMock{},
+		BlockClientMock:       &blockClientMock{},
+		ChainClientMock:       &chainClientMock{},
+		DecodeClientMock:      &decodeClientMock{},
+		EventClientMock:       &eventClientMock{},
+		TransactionClientMock: &transactionClientMock{},
+	}
+
+	c.Client = proxy.NewClient(
 		logger,
 		rateLimiter,
-		nil,
+		c.connMock,
 	)
-
-	bc.AccountClientMock = &accountClientMock{}
-	bc.BlockClientMock = &blockClientMock{}
-	bc.ChainClientMock = &chainClientMock{}
-	bc.DecodeClientMock = &decodeClientMock{}
-	bc.EventClientMock = &eventClientMock{}
-	bc.TransactionClientMock = &transactionClientMock{}
-
-	bc.Client.AccountClient = bc.AccountClientMock
-	bc.Client.BlockClient = bc.BlockClientMock
-	bc.Client.ChainClient = bc.ChainClientMock
-	bc.Client.DecodeClient = bc.DecodeClientMock
-	bc.Client.EventClient = bc.EventClientMock
-	bc.Client.TransactionClient = bc.TransactionClientMock
 }
 
-func (bc *BlockClientTest) TestGetBlockByHeight_OK() {
+func (bc *ClientTest) TestGetBlockByHeight_OK() {
 	height := int64(120)
 
 	req := &blockpb.GetByHeightRequest{
@@ -110,7 +99,7 @@ func (bc *BlockClientTest) TestGetBlockByHeight_OK() {
 	bc.Require().Equal(events[0].ExtrinsicIndex, res.Block.Extrinsics[0].Events[0].ExtrinsicIndex)
 }
 
-func (bc *BlockClientTest) TestGetBlockByHeight_Error() {
+func (bc *ClientTest) TestGetBlockByHeight_Error() {
 	height := int64(120)
 
 	req := &blockpb.GetByHeightRequest{
@@ -129,7 +118,7 @@ func (bc *BlockClientTest) TestGetBlockByHeight_Error() {
 	bc.Require().Contains(err.Error(), "Error while getting block by height: 120: new polkadothub-proxy error")
 }
 
-func (bc *BlockClientTest) TestGetEventByHeight_OK() {
+func (bc *ClientTest) TestGetEventByHeight_OK() {
 	height := int64(120)
 
 	req := &eventpb.GetByHeightRequest{
@@ -156,7 +145,7 @@ func (bc *BlockClientTest) TestGetEventByHeight_OK() {
 	bc.Require().Equal(res.Events[0].ExtrinsicIndex, response.Events[0].ExtrinsicIndex)
 }
 
-func (bc *BlockClientTest) TestGetEventByHeight_Error() {
+func (bc *ClientTest) TestGetEventByHeight_Error() {
 	height := int64(120)
 
 	req := &eventpb.GetByHeightRequest{
@@ -175,7 +164,7 @@ func (bc *BlockClientTest) TestGetEventByHeight_Error() {
 	bc.Require().Contains(err.Error(), "Error while getting event by height: 120: new polkadothub-proxy error")
 }
 
-func (bc *BlockClientTest) TestGetMetaByHeight_OK() {
+func (bc *ClientTest) TestGetMetaByHeight_OK() {
 	height := int64(120)
 
 	req := &chainpb.GetMetaByHeightRequest{
@@ -195,7 +184,7 @@ func (bc *BlockClientTest) TestGetMetaByHeight_OK() {
 	bc.Require().Equal(res.Era, response.Era)
 }
 
-func (bc *BlockClientTest) TestGetMetaByHeight_Error() {
+func (bc *ClientTest) TestGetMetaByHeight_Error() {
 	height := int64(120)
 
 	req := &chainpb.GetMetaByHeightRequest{
@@ -213,7 +202,7 @@ func (bc *BlockClientTest) TestGetMetaByHeight_Error() {
 	bc.Require().Contains(err.Error(), "Error while getting meta by height: 120: new polkadothub-proxy error")
 }
 
-func (bc *BlockClientTest) TestGetTransactionByHeight_OK() {
+func (bc *ClientTest) TestGetTransactionByHeight_OK() {
 	height := int64(120)
 
 	req := &transactionpb.GetByHeightRequest{
@@ -251,7 +240,7 @@ func (bc *BlockClientTest) TestGetTransactionByHeight_OK() {
 	bc.Require().Equal(events[0].ExtrinsicIndex, res.Transactions[0].Events[0].ExtrinsicIndex)
 }
 
-func (bc *BlockClientTest) TestGetTransactionByHeight_Error() {
+func (bc *ClientTest) TestGetTransactionByHeight_Error() {
 	height := int64(120)
 
 	req := &transactionpb.GetByHeightRequest{
@@ -271,7 +260,7 @@ func (bc *BlockClientTest) TestGetTransactionByHeight_Error() {
 }
 
 func TestBlockClient(t *testing.T) {
-	suite.Run(t, new(BlockClientTest))
+	suite.Run(t, new(ClientTest))
 }
 
 type accountClientMock struct {
@@ -351,4 +340,47 @@ func (m transactionClientMock) GetByHeight(ctx context.Context, in *transactionp
 func (m transactionClientMock) GetHead(ctx context.Context) (*chainpb.GetHeadResponse, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(*chainpb.GetHeadResponse), args.Error(1)
+}
+
+type connMock struct {
+	mock.Mock
+
+	AccountClientMock     *accountClientMock
+	BlockClientMock       *blockClientMock
+	ChainClientMock       *chainClientMock
+	DecodeClientMock      *decodeClientMock
+	EventClientMock       *eventClientMock
+	TransactionClientMock *transactionClientMock
+}
+
+func (m connMock) Close() {
+	return
+}
+
+func (m connMock) Add(*grpc.ClientConn) {
+	return
+}
+
+func (m connMock) GetNextAccountClient() accountpb.AccountServiceClient {
+	return m.AccountClientMock
+}
+
+func (m connMock) GetNextBlockClient() blockpb.BlockServiceClient {
+	return m.BlockClientMock
+}
+
+func (m connMock) GetNextChainClient() chainpb.ChainServiceClient {
+	return m.ChainClientMock
+}
+
+func (m connMock) GetNextEventServiceClient() eventpb.EventServiceClient {
+	return m.EventClientMock
+}
+
+func (m connMock) GetNextTransactionServiceClient() transactionpb.TransactionServiceClient {
+	return m.TransactionClientMock
+}
+
+func (m connMock) GetNextDecodeServiceClient() decodepb.DecodeServiceClient {
+	return m.DecodeClientMock
 }

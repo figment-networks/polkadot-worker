@@ -23,29 +23,16 @@ import (
 // Client connecting to polkadot-proxy
 type Client struct {
 	log         *zap.Logger
-	conn        *GRPConnections
+	conn        GRPConnectionsIface
 	rateLimiter *rate.Limiter
-
-	AccountClient     accountpb.AccountServiceClient
-	BlockClient       blockpb.BlockServiceClient
-	ChainClient       chainpb.ChainServiceClient
-	EventClient       eventpb.EventServiceClient
-	TransactionClient transactionpb.TransactionServiceClient
-	DecodeClient      decodepb.DecodeServiceClient
 }
 
 // NewClient is a polkadot-proxy Client constructor
-func NewClient(log *zap.Logger, rl *rate.Limiter, conns *GRPConnections) *Client {
+func NewClient(log *zap.Logger, rl *rate.Limiter, conns GRPConnectionsIface) *Client {
 
 	return &Client{log: log,
-		rateLimiter:       rl,
-		conn:              conns,
-		AccountClient:     conns.GetNextAccountClient(),
-		BlockClient:       conns.GetNextBlockClient(),
-		ChainClient:       conns.GetNextChainClient(),
-		EventClient:       conns.GetNextEventServiceClient(),
-		TransactionClient: conns.GetNextTransactionServiceClient(),
-		DecodeClient:      conns.GetNextDecodeServiceClient(),
+		rateLimiter: rl,
+		conn:        conns,
 	}
 }
 

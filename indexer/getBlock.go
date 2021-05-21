@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -141,12 +142,22 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 	return block, transactions, nil
 }
 
+var count = 0
+
+func save(name string, v interface{}) {
+	f, _ := os.Create(fmt.Sprintf("get-latest-%s-%d", name, count))
+	js, _ := json.MarshalIndent(v, "", "\t")
+	f.Write(js)
+	f.Close()
+}
+
 func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response) (height uint64, err error) {
 	err = conn.Send(ch, RequestFinalizedHead, "chain_getFinalizedHead", nil)
 	if err != nil {
 		return 0, err
 	}
 	resp := <-ch
+	save("chain_getFinalizedHead", resp)
 	if resp.Error != nil {
 		return 0, fmt.Errorf("response from ws is wrong (chain_getFinalizedHead): %s ", resp.Error)
 	}
@@ -156,6 +167,7 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 		return 0, err
 	}
 	header := <-ch
+	save("chain_getHeader", header)
 	if header.Error != nil {
 		return 0, fmt.Errorf("response from ws is wrong (chain_getHeader): %s ", resp.Error)
 	}
@@ -210,6 +222,7 @@ func (c *Client) GetMetadata(conn PolkaClient, ch chan api.Response, blockHash, 
 		return nil, err
 	}
 	res := <-ch
+	save("state_getMetadata", res)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -282,6 +295,7 @@ func GetBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 			}
 			continue
 		}
+		save(fmt.Sprintf("blockHash-%d", i), blockHashResp)
 
 		switch blockHashResp.ID {
 		case RequestBlockHash:
@@ -370,6 +384,7 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 			i++
 			continue
 		}
+		save(fmt.Sprintf("others-%d", i), res)
 		switch res.Type { // (lukanus): the []]byte(s[1 : len(s)-1])  is cutting out the quotes
 		case "system_chain":
 			s := string(res.Result)
