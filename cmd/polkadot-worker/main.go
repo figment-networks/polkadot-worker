@@ -128,7 +128,7 @@ func main() {
 	go serveGRPC(logger.GetLogger(), *cfg, indexerClient)
 
 	req := structs.LatestDataRequest{
-		LastHeight: 4441452,
+		LastHeight: 4459449,
 	}
 
 	var buffer bytes.Buffer

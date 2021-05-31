@@ -254,6 +254,8 @@ func (c *Client) sendAccountBalance(ctx context.Context, account string, height 
 
 // GetLatest returns latest Block's Transactions
 func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream *cStructs.StreamAccess) {
+	time.Sleep(10 * time.Second)
+
 	timer := metrics.NewTimer(getLatestDuration)
 	defer timer.ObserveDuration()
 
@@ -294,6 +296,8 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 		})
 		return
 	}
+
+	height = 4459450
 
 	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, height)
 
