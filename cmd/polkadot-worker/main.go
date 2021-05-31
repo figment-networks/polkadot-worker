@@ -142,13 +142,14 @@ func main() {
 	buffer.Read(tr.Payload)
 
 	stream := cStructs.NewStreamAccess()
-	defer stream.Close()
+	// defer stream.Close()
 
 	indexerClient.RegisterStream(ctx, stream)
 
+	time.Sleep(10000)
 	stream.Req(tr)
 
-	defer indexerClient.CloseStream(ctx, stream.StreamID)
+	// defer indexerClient.CloseStream(ctx, stream.StreamID)
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", metrics.Handler())

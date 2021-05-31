@@ -1,5 +1,6 @@
 {
 	"responses": [
+		{"ID":2,"Error":null,"Type":"chain_getFinalizedHead","Result":"0x9ecbd694e02ca45cb3f16cdc0b1ce90915567526e3852a4b7c0d7965efde12ff"},
 		{
 			"ID": 1,
 			"Error": null,

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/figment-networks/polkadot-worker/structs"
+	pStructs "github.com/figment-networks/polkadot-worker/structs"
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
@@ -37,7 +37,7 @@ func NewClient(log *zap.Logger, rl *rate.Limiter, conns GRPConnectionsIface) *Cl
 }
 
 // GetAccountBalance return Account Balance by provided height
-func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest, height uint64) (*decodepb.DecodeResponse, error) {
+func (c *Client) DecodeData(ctx context.Context, ddr pStructs.DecodeDataRequest, height uint64) (*decodepb.DecodeResponse, error) {
 	now := time.Now()
 
 	dc := c.conn.GetNextDecodeServiceClient()
