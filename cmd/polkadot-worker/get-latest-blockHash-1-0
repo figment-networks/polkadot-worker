@@ -2,5 +2,5 @@
 	"ID": 1,
 	"Error": null,
 	"Type": "chain_getBlockHash",
-	"Result": "0xf1c3f8be8e3622ea286d95a3480edb257cdc636d143f8d6f0fc5f2e1528d0a6a"
+	"Result": "0x386fa18f7eaa0d082a17a1097b224526185ac53ea0ab5488378f246da53940d1"
 }

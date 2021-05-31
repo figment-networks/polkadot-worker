@@ -1,6 +1,6 @@
 {
-	"ID": 11,
+	"ID": 8,
 	"Error": null,
 	"Type": "state_getStorage",
-	"Result": "0xda000000"
+	"Result": "0x608f2cd576010000"
 }

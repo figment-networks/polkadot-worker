@@ -352,6 +352,8 @@ func (c *Client) getLatestBlockHeightRange(ctx context.Context, lastHeight, last
 
 // GetTransactions returns Transactions with given range
 func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, stream *cStructs.StreamAccess) {
+	time.Sleep(10 * time.Second)
+
 	timer := metrics.NewTimer(getTransactionDuration)
 	defer timer.ObserveDuration()
 
