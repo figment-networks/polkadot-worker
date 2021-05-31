@@ -146,7 +146,6 @@ func main() {
 
 	indexerClient.RegisterStream(ctx, stream)
 
-	time.Sleep(10000)
 	stream.Req(tr)
 
 	// defer indexerClient.CloseStream(ctx, stream.StreamID)

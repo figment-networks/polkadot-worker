@@ -13,6 +13,7 @@ import (
 
 	"github.com/figment-networks/polkadot-worker/api"
 	"github.com/figment-networks/polkadot-worker/api/scale"
+	"github.com/figment-networks/polkadot-worker/cmd/polkadot-live/logger"
 	"github.com/figment-networks/polkadot-worker/mapper"
 
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
@@ -55,7 +56,7 @@ const PolkadotTypeNextFeeMultiplier = "0x3f1467a096bcd71a5b6a0c8155e208103f2edf3
 // PolkadotTypeCurrentEra is literally  `xxhash("Staking",128) + xxhash("CurrentEra",128)`
 const PolkadotTypeCurrentEra = "0x5f3e4907f716ac89b6347d15ececedca0b6a45321efae92aea15e0740ec7afe7"
 
-func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint64) (block *structs.Block, transactions []*structs.Transaction, err error) {
+func (c *Client) blockAndTx(ctx context.Context, height uint64) (block *structs.Block, transactions []*structs.Transaction, err error) {
 	now := time.Now()
 	ch := c.gbPool.Get()
 	defer c.gbPool.Put(ch)
@@ -104,7 +105,7 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 		return block, nil, nil
 	}
 
-	if transactions, err = c.trMapper.TransactionsMapper(c.log, resp.Block); err != nil {
+	if transactions, err = c.trMapper.TransactionsMapper(resp.Block); err != nil {
 		return nil, nil, fmt.Errorf("error while mapping transactions: %w", err)
 	}
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/figment-networks/polkadot-worker/api"
 	"github.com/figment-networks/polkadot-worker/api/scale"
+	"github.com/figment-networks/polkadot-worker/cmd/polkadot-live/logger"
 	"github.com/figment-networks/polkadot-worker/mapper"
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
 
@@ -108,7 +109,7 @@ func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint
 		serverConn: serverConn,
 		streams:    make(map[uuid.UUID]*cStructs.StreamAccess),
 		abMapper:   mapper.NewAccountBalanceMapper(exp, currency),
-		trMapper:   mapper.NewTransactionMapper(exp, chainID, currency),
+		trMapper:   mapper.NewTransactionMapper(exp, log, chainID, currency),
 	}
 }
 
@@ -296,7 +297,7 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 
 	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, height)
 
-	if err := c.sendTransactionsInRange(ctx, c.log, hr, out); err != nil {
+	if err := c.sendTransactionsInRange(ctx, hr, out); err != nil {
 		stream.Send(cStructs.TaskResponse{
 			Id:    tr.Id,
 			Error: cStructs.TaskError{Msg: fmt.Sprintf("Error while getting Transactions with given range: %s", err.Error())},
@@ -389,7 +390,7 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
-	if err := c.sendTransactionsInRange(ctx, c.log, hr, out); err != nil {
+	if err := c.sendTransactionsInRange(ctx, hr, out); err != nil {
 		stream.Send(cStructs.TaskResponse{
 			Id: tr.Id,
 			Error: cStructs.TaskError{
@@ -489,7 +490,7 @@ type hBTx struct {
 }
 
 // getRange gets given range of blocks and transactions
-func (c *Client) sendTransactionsInRange(ctx context.Context, logger *zap.Logger, hr structs.HeightRange, out chan cStructs.OutResp) (err error) {
+func (c *Client) sendTransactionsInRange(ctx context.Context, hr structs.HeightRange, out chan cStructs.OutResp) (err error) {
 	defer logger.Sync()
 
 	chIn := oHBTxPool.Get()
@@ -501,7 +502,7 @@ func (c *Client) sendTransactionsInRange(ctx context.Context, logger *zap.Logger
 	wg := &sync.WaitGroup{}
 	for i := 0; i < 40; i++ {
 		wg.Add(1)
-		go c.asyncBlockAndTx(ctx, logger, wg, chIn)
+		go c.asyncBlockAndTx(ctx, wg, chIn)
 	}
 	go populateRange(chIn, chOut, hr, errored)
 
@@ -589,11 +590,11 @@ func populateRange(in, out chan hBTx, hr structs.HeightRange, er chan bool) {
 	close(in)
 }
 
-func (c *Client) asyncBlockAndTx(ctx context.Context, logger *zap.Logger, wg *sync.WaitGroup, cinn <-chan hBTx) {
+func (c *Client) asyncBlockAndTx(ctx context.Context, wg *sync.WaitGroup, cinn <-chan hBTx) {
 	defer wg.Done()
 	for in := range cinn {
 
-		b, txs, err := c.blockAndTx(ctx, logger, in.Height)
+		b, txs, err := c.blockAndTx(ctx, in.Height)
 		if err != nil {
 			in.Ch <- cStructs.OutResp{
 				Error: err,

@@ -10,9 +10,9 @@ import (
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
+	"go.uber.org/zap"
 
 	"github.com/pkg/errors"
-	"go.uber.org/zap"
 )
 
 const chain_version string = "0.0.1"
@@ -27,21 +27,23 @@ type TransactionMapper struct {
 	div      *big.Float
 	chainID  string
 	currency string
+	log      *zap.Logger
 }
 
 // NewTransactionMapper creates a new Transaction mapper
-func NewTransactionMapper(exp int, chainID, currency string) *TransactionMapper {
+func NewTransactionMapper(exp int, log *zap.Logger, chainID, currency string) *TransactionMapper {
 	transactionConversionDuration = conversionDuration.WithLabels("transaction")
 	return &TransactionMapper{
 		exp:      exp,
 		div:      initExpDivider(int64(exp)),
 		chainID:  chainID,
 		currency: currency,
+		log:      log,
 	}
 }
 
 // TransactionsMapper maps Block and Transactions response into database Transcations struct
-func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockpb.GetByHeightResponse) ([]*structs.Transaction, error) {
+func (m *TransactionMapper) TransactionsMapper(blockRes *blockpb.GetByHeightResponse) ([]*structs.Transaction, error) {
 	var transactions []*structs.Transaction
 	transactionMap := make(map[string]struct{})
 
@@ -63,7 +65,7 @@ func (m *TransactionMapper) TransactionsMapper(log *zap.Logger, blockRes *blockp
 
 		nonce := strconv.FormatUint(uint64(t.Nonce), 10)
 		method := strings.ToLower(t.GetMethod())
-		subs, logs, err := parseEvents(log, t.GetEvents(), m.div, time, m.exp, uint64(blockRes.Block.Header.Height), m.currency, nonce, t.Signer)
+		subs, logs, err := parseEvents(m.log, t.GetEvents(), m.div, time, m.exp, uint64(blockRes.Block.Header.Height), m.currency, nonce, t.Signer)
 		if err != nil {
 			return nil, err
 		}
