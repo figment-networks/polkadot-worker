@@ -7,10 +7,7 @@ import (
 	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/utils"
-
-	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
-	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
-	"github.com/figment-networks/polkadothub-proxy/grpc/transaction/transactionpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/decode/decodepb"
 
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
@@ -26,23 +23,21 @@ type TransactionMapperTest struct {
 	Exp      int
 	Version  string
 
-	BlockResponse        *blockpb.GetByHeightResponse
-	EventsResponse       *eventpb.GetByHeightResponse
-	TransactionsResponse *transactionpb.GetByHeightResponse
+	DecodeResponse *decodepb.DecodeResponse
 
 	Log *zap.Logger
 }
 
 func (tm *TransactionMapperTest) SetupTest() {
-	tm.ChainID = "Polkadot"
+	tm.ChainID = "polkadot"
 	tm.Currency = "DOT"
-	tm.Exp = 12
+	tm.Exp = 10
 	tm.Version = "0.0.1"
 
 	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(tm.Exp)), nil)
 	tm.Divider = new(big.Float).SetFloat64(float64(div.Int64()))
 
-	utils.ReadFile(tm.Suite, "./../utils/block_response.json", &tm.BlockResponse)
+	utils.ReadFile(tm.Suite, "./../utils/decoded.json", &tm.DecodeResponse)
 
 	log, err := zap.NewDevelopment()
 	tm.Require().Nil(err)
@@ -53,9 +48,9 @@ func (tm *TransactionMapperTest) SetupTest() {
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
-	tm.BlockResponse.Block.Extrinsics[0].Time = "[object Object]"
+	tm.DecodeResponse.Block.Block.Extrinsics[0].Time = "[object Object]"
 
-	transactions, err := tm.TransactionsMapper(tm.BlockResponse)
+	transactions, err := tm.TransactionsMapper(tm.DecodeResponse.Block)
 
 	tm.Require().Nil(transactions)
 
@@ -64,9 +59,9 @@ func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() {
-	tm.BlockResponse.Block.Extrinsics[0].PartialFee = "bad"
+	tm.DecodeResponse.Block.Block.Extrinsics[0].PartialFee = "bad"
 
-	transactions, err := tm.TransactionsMapper(tm.BlockResponse)
+	transactions, err := tm.TransactionsMapper(tm.DecodeResponse.Block)
 
 	tm.Require().Nil(transactions)
 
@@ -75,10 +70,10 @@ func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() 
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
-	tm.BlockResponse.Block.Extrinsics[0].PartialFee = ""
-	tm.BlockResponse.Block.Extrinsics[0].Tip = "bad"
+	tm.DecodeResponse.Block.Block.Extrinsics[0].PartialFee = ""
+	tm.DecodeResponse.Block.Block.Extrinsics[0].Tip = "bad"
 
-	transactions, err := tm.TransactionsMapper(tm.BlockResponse)
+	transactions, err := tm.TransactionsMapper(tm.DecodeResponse.Block)
 
 	tm.Require().Nil(transactions)
 
@@ -90,11 +85,11 @@ func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
 	var expected []*structs.Transaction
 	utils.ReadFile(tm.Suite, "./../utils/transactions.json", &expected)
 
-	transactions, err := tm.TransactionsMapper(tm.BlockResponse)
+	transactions, err := tm.TransactionsMapper(tm.DecodeResponse.Block)
 
 	tm.Require().Nil(err)
 
-	tm.Require().Len(transactions, 3)
+	tm.Require().Len(transactions, 2)
 
 	utils.ValidateTransactions(&tm.Suite, *transactions[0], *expected[0])
 }

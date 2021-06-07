@@ -259,7 +259,7 @@ func (c *ClientTest) TestGetTransactionByHeight_Error() {
 	c.Require().Contains(err.Error(), "Error while getting transaction by height: 120: new polkadothub-proxy error")
 }
 
-func TestBlockClient(t *testing.T) {
+func TestClient(t *testing.T) {
 	suite.Run(t, new(ClientTest))
 }
 

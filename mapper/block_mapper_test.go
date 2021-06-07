@@ -5,10 +5,12 @@ import (
 
 	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/utils"
-	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
+	"github.com/figment-networks/polkadothub-proxy/grpc/decode/decodepb"
 
 	"github.com/stretchr/testify/suite"
 )
+
+var blockResponse = []byte(``)
 
 type BlockMapperTest struct {
 	suite.Suite
@@ -16,22 +18,22 @@ type BlockMapperTest struct {
 	ChainID string
 	Epoch   string
 
-	BlockResponse *blockpb.GetByHeightResponse
+	DecodeResponse *decodepb.DecodeResponse
 }
 
 func (t *BlockMapperTest) SetupTest() {
 	t.ChainID = "Polkadot"
 	t.Epoch = "320"
 
-	utils.ReadFile(t.Suite, "./../utils/block_response.json", &t.BlockResponse)
+	utils.ReadFile(t.Suite, "./../utils/decoded.json", &t.DecodeResponse)
 }
 
 func (t *BlockMapperTest) TestBlockMapper_OK() {
-	block, err := mapper.BlockMapper(t.BlockResponse, t.ChainID, t.Epoch)
+	block, err := mapper.BlockMapper(t.DecodeResponse.Block, t.ChainID, t.Epoch)
 
 	t.Require().Nil(err)
 
-	blResp := t.BlockResponse.Block
+	blResp := t.DecodeResponse.Block.Block
 	t.Require().Equal(t.ChainID, block.ChainID)
 	t.Require().Equal(t.Epoch, block.Epoch)
 	t.Require().Equal(blResp.BlockHash, block.Hash)
