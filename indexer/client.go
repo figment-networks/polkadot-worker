@@ -288,7 +288,6 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 	defer c.gbPool.Put(ch)
 	height, err := getLatestHeight(c.serverConn, c.Cache, ch)
 	if err != nil {
-		fmt.Println(err.Error())
 		stream.Send(cStructs.TaskResponse{
 			Id:    tr.Id,
 			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch head from proxy: %s", err.Error())},
@@ -485,12 +484,6 @@ func (c *Client) sendResp(id uuid.UUID, taskType string, err error, payload inte
 	}
 }
 
-type hBTx struct {
-	Height uint64
-	Last   bool
-	Ch     chan cStructs.OutResp
-}
-
 // getRange gets given range of blocks and transactions
 func (c *Client) sendTransactionsInRange(ctx context.Context, hr structs.HeightRange, out chan cStructs.OutResp) (err error) {
 	defer c.log.Sync()
@@ -595,7 +588,6 @@ func populateRange(in, out chan hBTx, hr structs.HeightRange, er chan bool) {
 func (c *Client) asyncBlockAndTx(ctx context.Context, wg *sync.WaitGroup, cinn <-chan hBTx) {
 	defer wg.Done()
 	for in := range cinn {
-
 		b, txs, err := c.blockAndTx(ctx, in.Height)
 		if err != nil {
 			in.Ch <- cStructs.OutResp{

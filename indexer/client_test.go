@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sync"
 	"testing"
 
@@ -309,7 +308,6 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 		if s.Id.String() != ic.ReqID.String() {
 			continue
 		}
-		fmt.Println(s)
 
 		switch s.Type {
 		case "Block":
@@ -400,7 +398,6 @@ func (ic *IndexerClientTest) TestGetLatest_DecodeDataError() {
 	ic.Require().Nil(stream.Req(tr))
 
 	for response := range stream.ResponseListener {
-		fmt.Printf("payload: %v\n", response.Payload)
 		if response.Id.String() != ic.ReqID.String() || response.Error.Msg == "" {
 			continue
 		}
@@ -530,8 +527,6 @@ func (ic *IndexerClientTest) TestGetTransactions_HeightRangeUnmarshalError() {
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
 
-	fmt.Printf("TestGetTransactions_HeightRangeUnmarshalError: %s %s", ic.ReqID, stream.StreamID)
-
 	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
 	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
 	defer ic.CtxCancel()
@@ -573,8 +568,6 @@ func (ic *IndexerClientTest) TestGetTransactions_DecodeDataError() {
 
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
-
-	fmt.Printf("TestGetTransactions_DecodeDataError: %s %s", ic.ReqID, stream.StreamID)
 
 	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
 	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))

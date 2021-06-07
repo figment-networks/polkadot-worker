@@ -3,8 +3,6 @@ package api
 import (
 	"testing"
 
-	///"github.com/cespare/xxhash"
-
 	"github.com/figment-networks/polkadot-worker/api/scale"
 	"github.com/stretchr/testify/require"
 )

@@ -29,6 +29,9 @@ func (o *outRespPool) Get() chan cStructs.OutResp {
 	defer o.lock.Unlock()
 	select {
 	case a := <-o.stor:
+		if a == nil {
+			return make(chan cStructs.OutResp, 1000)
+		}
 		// (lukanus): better safe than sorry
 		outRespDrain(a)
 		return a
@@ -48,6 +51,12 @@ func (o *outRespPool) Put(or chan cStructs.OutResp) {
 	}
 
 	return
+}
+
+type hBTx struct {
+	Height uint64
+	Last   bool
+	Ch     chan cStructs.OutResp
 }
 
 type hBTxPool struct {
