@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -18,7 +19,9 @@ import (
 	"github.com/figment-networks/polkadot-worker/indexer"
 	"github.com/figment-networks/polkadot-worker/proxy"
 
+	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/indexer-manager/worker/connectivity"
+	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
 	grpcIndexer "github.com/figment-networks/indexer-manager/worker/transport/grpc"
 	grpcProtoIndexer "github.com/figment-networks/indexer-manager/worker/transport/grpc/indexer"
 	"github.com/figment-networks/indexing-engine/health"
@@ -124,34 +127,28 @@ func main() {
 	indexerClient := createIndexerClient(ctx, logger.GetLogger(), cfg, ngc, connApi, ds)
 	go serveGRPC(logger.GetLogger(), *cfg, indexerClient)
 
-	// // req := structs.LatestDataRequest{
-	// // 	LastHeight: 4459449,
-	// // }
+	req := structs.LatestDataRequest{
+		LastHeight: 4459449,
+	}
 
-	// req := structs.HeightRange{
-	// 	StartHeight: 4459449,
-	// 	EndHeight:   4459450,
-	// }
+	var buffer bytes.Buffer
+	json.NewEncoder(&buffer).Encode(req)
 
-	// var buffer bytes.Buffer
-	// json.NewEncoder(&buffer).Encode(req)
+	tr := cStructs.TaskRequest{
+		Id:      uuid.New(),
+		Type:    structs.ReqIDLatestData,
+		Payload: make([]byte, buffer.Len()),
+	}
+	buffer.Read(tr.Payload)
 
-	// tr := cStructs.TaskRequest{
-	// 	Id: uuid.New(),
-	// 	// Type:    structs.ReqIDLatestData,
-	// 	Type:    structs.ReqIDGetTransactions,
-	// 	Payload: make([]byte, buffer.Len()),
-	// }
-	// buffer.Read(tr.Payload)
+	stream := cStructs.NewStreamAccess()
+	// defer stream.Close()
 
-	// stream := cStructs.NewStreamAccess()
-	// // defer stream.Close()
+	indexerClient.RegisterStream(ctx, stream)
 
-	// indexerClient.RegisterStream(ctx, stream)
+	stream.Req(tr)
 
-	// stream.Req(tr)
-
-	// // defer indexerClient.CloseStream(ctx, stream.StreamID)
+	defer indexerClient.CloseStream(ctx, stream.StreamID)
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", metrics.Handler())

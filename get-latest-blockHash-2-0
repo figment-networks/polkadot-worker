@@ -1,6 +1,0 @@
-{
-	"ID": 5,
-	"Error": null,
-	"Type": "chain_getBlockHash",
-	"Result": "0xa23d37c6ff3d9d49027d995112f6c07d5b7b28ab7a5db737bdc76f4c111cfbdf"
-}

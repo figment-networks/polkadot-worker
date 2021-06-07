@@ -11,7 +11,6 @@ import (
 
 	"github.com/figment-networks/polkadot-worker/api"
 	"github.com/figment-networks/polkadot-worker/api/scale"
-	"github.com/figment-networks/polkadot-worker/cmd/polkadot-live/logger"
 	"github.com/figment-networks/polkadot-worker/mapper"
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
 
@@ -90,10 +89,12 @@ func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint
 	getAccountBalanceDuration = endpointDuration.WithLabels("getAccountBalance")
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
+
 	newLru, err := lru.New(3000)
 	if err != nil {
 		panic(fmt.Errorf("cache cannot be defined: %w", err)) // we really need to fatal here. this should not happen.
 	}
+
 	return &Client{
 		chainID:         chainID,
 		currency:        currency,
@@ -254,8 +255,6 @@ func (c *Client) sendAccountBalance(ctx context.Context, account string, height 
 
 // GetLatest returns latest Block's Transactions
 func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream *cStructs.StreamAccess) {
-	time.Sleep(10 * time.Second)
-
 	timer := metrics.NewTimer(getLatestDuration)
 	defer timer.ObserveDuration()
 
@@ -289,6 +288,7 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 	defer c.gbPool.Put(ch)
 	height, err := getLatestHeight(c.serverConn, c.Cache, ch)
 	if err != nil {
+		fmt.Println(err.Error())
 		stream.Send(cStructs.TaskResponse{
 			Id:    tr.Id,
 			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch head from proxy: %s", err.Error())},
@@ -296,8 +296,6 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 		})
 		return
 	}
-
-	height = 4459450
 
 	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, height)
 
@@ -352,8 +350,6 @@ func (c *Client) getLatestBlockHeightRange(ctx context.Context, lastHeight, last
 
 // GetTransactions returns Transactions with given range
 func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, stream *cStructs.StreamAccess) {
-	time.Sleep(10 * time.Second)
-
 	timer := metrics.NewTimer(getTransactionDuration)
 	defer timer.ObserveDuration()
 
@@ -497,7 +493,7 @@ type hBTx struct {
 
 // getRange gets given range of blocks and transactions
 func (c *Client) sendTransactionsInRange(ctx context.Context, hr structs.HeightRange, out chan cStructs.OutResp) (err error) {
-	defer logger.Sync()
+	defer c.log.Sync()
 
 	chIn := oHBTxPool.Get()
 	chOut := oHBTxPool.Get()
@@ -518,7 +514,7 @@ RANGE_LOOP:
 		// (lukanus): add timeout
 		case o := <-chOut:
 			if o.Last {
-				logger.Debug("[CLIENT] Finished sending height", zap.Uint64("height", o.Height))
+				c.log.Debug("[CLIENT] Finished sending height", zap.Uint64("height", o.Height))
 				break RANGE_LOOP
 			}
 

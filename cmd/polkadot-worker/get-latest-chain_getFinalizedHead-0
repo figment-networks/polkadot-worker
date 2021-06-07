@@ -1,6 +1,0 @@
-{
-	"ID": 3,
-	"Error": null,
-	"Type": "chain_getFinalizedHead",
-	"Result": "0xe328deddb3d46a755ff7f0d6e91f74aa153eb2938b0b614ca506fc5bc5a57143"
-}

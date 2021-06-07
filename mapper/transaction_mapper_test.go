@@ -49,13 +49,13 @@ func (tm *TransactionMapperTest) SetupTest() {
 
 	tm.Log = log
 
-	tm.TransactionMapper = mapper.NewTransactionMapper(tm.Exp, tm.ChainID, tm.Currency)
+	tm.TransactionMapper = mapper.NewTransactionMapper(tm.Exp, tm.Log, tm.ChainID, tm.Currency)
 }
 
 func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
 	tm.BlockResponse.Block.Extrinsics[0].Time = "[object Object]"
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse)
+	transactions, err := tm.TransactionsMapper(tm.BlockResponse)
 
 	tm.Require().Nil(transactions)
 
@@ -66,7 +66,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_TimeParsingError() {
 func (tm *TransactionMapperTest) TestTransactionMapper_PartialFeeParsingError() {
 	tm.BlockResponse.Block.Extrinsics[0].PartialFee = "bad"
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse)
+	transactions, err := tm.TransactionsMapper(tm.BlockResponse)
 
 	tm.Require().Nil(transactions)
 
@@ -78,7 +78,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_TipParsingError() {
 	tm.BlockResponse.Block.Extrinsics[0].PartialFee = ""
 	tm.BlockResponse.Block.Extrinsics[0].Tip = "bad"
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse)
+	transactions, err := tm.TransactionsMapper(tm.BlockResponse)
 
 	tm.Require().Nil(transactions)
 
@@ -90,7 +90,7 @@ func (tm *TransactionMapperTest) TestTransactionMapper_OK() {
 	var expected []*structs.Transaction
 	utils.ReadFile(tm.Suite, "./../utils/transactions.json", &expected)
 
-	transactions, err := tm.TransactionsMapper(tm.Log, tm.BlockResponse)
+	transactions, err := tm.TransactionsMapper(tm.BlockResponse)
 
 	tm.Require().Nil(err)
 

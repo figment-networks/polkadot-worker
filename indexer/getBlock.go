@@ -6,14 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/figment-networks/polkadot-worker/api"
 	"github.com/figment-networks/polkadot-worker/api/scale"
-	"github.com/figment-networks/polkadot-worker/cmd/polkadot-live/logger"
 	"github.com/figment-networks/polkadot-worker/mapper"
 
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
@@ -56,6 +55,8 @@ const PolkadotTypeNextFeeMultiplier = "0x3f1467a096bcd71a5b6a0c8155e208103f2edf3
 // PolkadotTypeCurrentEra is literally  `xxhash("Staking",128) + xxhash("CurrentEra",128)`
 const PolkadotTypeCurrentEra = "0x5f3e4907f716ac89b6347d15ececedca0b6a45321efae92aea15e0740ec7afe7"
 
+var ddrCount = 0
+
 func (c *Client) blockAndTx(ctx context.Context, height uint64) (block *structs.Block, transactions []*structs.Transaction, err error) {
 	now := time.Now()
 	ch := c.gbPool.Get()
@@ -92,14 +93,20 @@ func (c *Client) blockAndTx(ctx context.Context, height uint64) (block *structs.
 		return nil, nil, fmt.Errorf("error getTransactionsForHeight: %w", err)
 	}
 
+	save(strconv.Itoa(int(height)), ddr)
+
 	resp, err := c.proxy.DecodeData(ctx, ddr, height)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error while decoding data: %w", err)
 	}
 
+	save(strconv.Itoa(int(height)), resp)
+
 	if block, err = mapper.BlockMapper(resp.Block, c.chainID, resp.Epoch); err != nil {
 		return nil, nil, fmt.Errorf("error while mapping block: %w", err)
 	}
+
+	save(strconv.Itoa(int(height)), block)
 
 	if len(resp.Block.Block.Extrinsics) == 0 {
 		return block, nil, nil
@@ -139,17 +146,23 @@ func (c *Client) blockAndTx(ctx context.Context, height uint64) (block *structs.
 		}
 	}
 
-	logger.Debug("Finished ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
+	save(strconv.Itoa(int(height)), transactions)
+
+	c.log.Debug("Finished ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
 	return block, transactions, nil
 }
 
+var countLock sync.Mutex
 var count = 0
 
-func save(name string, v interface{}) {
-	f, _ := os.Create(fmt.Sprintf("get-latest-%s-%d", name, count))
-	js, _ := json.MarshalIndent(v, "", "\t")
-	f.Write(js)
-	f.Close()
+func save(height string, v interface{}) {
+	// countLock.Lock()
+	// f, _ := os.Create(fmt.Sprintf("get-block-%d-%s", count, height))
+	// js, _ := json.MarshalIndent(v, "", "\t")
+	// f.Write(js)
+	// f.Close()
+	// count++
+	// countLock.Unlock()
 }
 
 func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response) (height uint64, err error) {
@@ -158,7 +171,7 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 		return 0, err
 	}
 	resp := <-ch
-	save("chain_getFinalizedHead", resp)
+	save(strconv.Itoa(int(height)), resp)
 	if resp.Error != nil {
 		return 0, fmt.Errorf("response from ws is wrong (chain_getFinalizedHead): %s ", resp.Error)
 	}
@@ -168,7 +181,7 @@ func getLatestHeight(conn PolkaClient, cache *ClientCache, ch chan api.Response)
 		return 0, err
 	}
 	header := <-ch
-	save("chain_getHeader", header)
+	save(strconv.Itoa(int(height)), header)
 	if header.Error != nil {
 		return 0, fmt.Errorf("response from ws is wrong (chain_getHeader): %s ", resp.Error)
 	}
@@ -223,7 +236,7 @@ func (c *Client) GetMetadata(conn PolkaClient, ch chan api.Response, blockHash, 
 		return nil, err
 	}
 	res := <-ch
-	save("state_getMetadata", res)
+	save(blockHash, res)
 	if res.Error != nil {
 		return nil, res.Error
 	}
@@ -296,7 +309,7 @@ func GetBlockHashes(height uint64, conn PolkaClient, cache *ClientCache, ch chan
 			}
 			continue
 		}
-		save(fmt.Sprintf("blockHash-%d", i), blockHashResp)
+		save(strconv.Itoa(int(height)), blockHashResp)
 
 		switch blockHashResp.ID {
 		case RequestBlockHash:
@@ -385,7 +398,7 @@ func getOthers(blockHash, parentBlockHash, grandParentBlockHash string, conn Pol
 			i++
 			continue
 		}
-		save(fmt.Sprintf("others-%d", i), res)
+		save(blockHash, res)
 		switch res.Type { // (lukanus): the []]byte(s[1 : len(s)-1])  is cutting out the quotes
 		case "system_chain":
 			s := string(res.Result)
