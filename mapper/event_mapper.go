@@ -162,7 +162,7 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 			"version", "code_hash", "data", "asset_id", "symbol", "decimals", "name", "max_zombies", "remark_hash":
 			break
 		default:
-			return fmt.Errorf("Unknown value to parse event %q values: %v height: %d", v, values, height)
+			log.Error("Unknown value to parse event", zap.String("unknown_parameter", v), zap.Strings("all_parameters", values), zap.Uint64("height", height))
 		}
 
 		if err != nil {
