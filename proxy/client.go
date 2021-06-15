@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/figment-networks/polkadot-worker/structs"
+	pStructs "github.com/figment-networks/polkadot-worker/structs"
 
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
@@ -23,34 +23,21 @@ import (
 // Client connecting to polkadot-proxy
 type Client struct {
 	log         *zap.Logger
-	conn        *GRPConnections
+	conn        GRPConnectionsIface
 	rateLimiter *rate.Limiter
-
-	AccountClient     accountpb.AccountServiceClient
-	BlockClient       blockpb.BlockServiceClient
-	ChainClient       chainpb.ChainServiceClient
-	EventClient       eventpb.EventServiceClient
-	TransactionClient transactionpb.TransactionServiceClient
-	DecodeClient      decodepb.DecodeServiceClient
 }
 
 // NewClient is a polkadot-proxy Client constructor
-func NewClient(log *zap.Logger, rl *rate.Limiter, conns *GRPConnections) *Client {
+func NewClient(log *zap.Logger, rl *rate.Limiter, conns GRPConnectionsIface) *Client {
 
 	return &Client{log: log,
-		rateLimiter:       rl,
-		conn:              conns,
-		AccountClient:     conns.GetNextAccountClient(),
-		BlockClient:       conns.GetNextBlockClient(),
-		ChainClient:       conns.GetNextChainClient(),
-		EventClient:       conns.GetNextEventServiceClient(),
-		TransactionClient: conns.GetNextTransactionServiceClient(),
-		DecodeClient:      conns.GetNextDecodeServiceClient(),
+		rateLimiter: rl,
+		conn:        conns,
 	}
 }
 
 // GetAccountBalance return Account Balance by provided height
-func (c *Client) DecodeData(ctx context.Context, ddr structs.DecodeDataRequest, height uint64) (*decodepb.DecodeResponse, error) {
+func (c *Client) DecodeData(ctx context.Context, ddr pStructs.DecodeDataRequest, height uint64) (*decodepb.DecodeResponse, error) {
 	now := time.Now()
 
 	dc := c.conn.GetNextDecodeServiceClient()

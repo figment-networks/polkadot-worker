@@ -76,7 +76,7 @@ RuntimeVersionLoop:
 	}
 
 	pai, err = getAccountData(logger, c.serverConn, ch, meta, int(prm.SpecVersion), blH, accountID)
-	logger.Debug("Finished ", zap.String("account", accountID), zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
+	logger.Debug("Finished", zap.String("account", accountID), zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
 	if err == nil || !errors.Is(err, ErrTimeout) { // timeout
 		c.gbPool.Put(ch)
 	}

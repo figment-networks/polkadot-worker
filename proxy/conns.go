@@ -12,6 +12,17 @@ import (
 	"google.golang.org/grpc"
 )
 
+type GRPConnectionsIface interface {
+	Close()
+	Add(*grpc.ClientConn)
+	GetNextAccountClient() accountpb.AccountServiceClient
+	GetNextBlockClient() blockpb.BlockServiceClient
+	GetNextChainClient() chainpb.ChainServiceClient
+	GetNextEventServiceClient() eventpb.EventServiceClient
+	GetNextTransactionServiceClient() transactionpb.TransactionServiceClient
+	GetNextDecodeServiceClient() decodepb.DecodeServiceClient
+}
+
 type GRPConnections struct {
 	next int
 	len  int

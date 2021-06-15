@@ -54,7 +54,9 @@ const PolkadotTypeNextFeeMultiplier = "0x3f1467a096bcd71a5b6a0c8155e208103f2edf3
 // PolkadotTypeCurrentEra is literally  `xxhash("Staking",128) + xxhash("CurrentEra",128)`
 const PolkadotTypeCurrentEra = "0x5f3e4907f716ac89b6347d15ececedca0b6a45321efae92aea15e0740ec7afe7"
 
-func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint64) (block *structs.Block, transactions []*structs.Transaction, err error) {
+var ddrCount = 0
+
+func (c *Client) blockAndTx(ctx context.Context, height uint64) (block *structs.Block, transactions []*structs.Transaction, err error) {
 	now := time.Now()
 	ch := c.gbPool.Get()
 	defer c.gbPool.Put(ch)
@@ -103,7 +105,7 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 		return block, nil, nil
 	}
 
-	if transactions, err = c.trMapper.TransactionsMapper(c.log, resp.Block); err != nil {
+	if transactions, err = c.trMapper.TransactionsMapper(resp.Block); err != nil {
 		return nil, nil, fmt.Errorf("error while mapping transactions: %w", err)
 	}
 
@@ -137,7 +139,7 @@ func (c *Client) blockAndTx(ctx context.Context, logger *zap.Logger, height uint
 		}
 	}
 
-	logger.Debug("Finished ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
+	c.log.Debug("Finished ", zap.Uint64("height", height), zap.Duration("from", time.Since(now)))
 	return block, transactions, nil
 }
 

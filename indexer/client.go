@@ -89,10 +89,12 @@ func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint
 	getAccountBalanceDuration = endpointDuration.WithLabels("getAccountBalance")
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
+
 	newLru, err := lru.New(3000)
 	if err != nil {
 		panic(fmt.Errorf("cache cannot be defined: %w", err)) // we really need to fatal here. this should not happen.
 	}
+
 	return &Client{
 		chainID:         chainID,
 		currency:        currency,
@@ -108,7 +110,7 @@ func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint
 		serverConn: serverConn,
 		streams:    make(map[uuid.UUID]*cStructs.StreamAccess),
 		abMapper:   mapper.NewAccountBalanceMapper(exp, currency),
-		trMapper:   mapper.NewTransactionMapper(exp, chainID, currency),
+		trMapper:   mapper.NewTransactionMapper(exp, log, chainID, currency),
 	}
 }
 
@@ -296,7 +298,7 @@ func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream 
 
 	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, height)
 
-	if err := c.sendTransactionsInRange(ctx, c.log, hr, out); err != nil {
+	if err := c.sendTransactionsInRange(ctx, hr, out); err != nil {
 		stream.Send(cStructs.TaskResponse{
 			Id:    tr.Id,
 			Error: cStructs.TaskError{Msg: fmt.Sprintf("Error while getting Transactions with given range: %s", err.Error())},
@@ -389,7 +391,7 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 
 	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
 
-	if err := c.sendTransactionsInRange(ctx, c.log, hr, out); err != nil {
+	if err := c.sendTransactionsInRange(ctx, hr, out); err != nil {
 		stream.Send(cStructs.TaskResponse{
 			Id: tr.Id,
 			Error: cStructs.TaskError{
@@ -482,15 +484,9 @@ func (c *Client) sendResp(id uuid.UUID, taskType string, err error, payload inte
 	}
 }
 
-type hBTx struct {
-	Height uint64
-	Last   bool
-	Ch     chan cStructs.OutResp
-}
-
 // getRange gets given range of blocks and transactions
-func (c *Client) sendTransactionsInRange(ctx context.Context, logger *zap.Logger, hr structs.HeightRange, out chan cStructs.OutResp) (err error) {
-	defer logger.Sync()
+func (c *Client) sendTransactionsInRange(ctx context.Context, hr structs.HeightRange, out chan cStructs.OutResp) (err error) {
+	defer c.log.Sync()
 
 	chIn := oHBTxPool.Get()
 	chOut := oHBTxPool.Get()
@@ -501,7 +497,7 @@ func (c *Client) sendTransactionsInRange(ctx context.Context, logger *zap.Logger
 	wg := &sync.WaitGroup{}
 	for i := 0; i < 40; i++ {
 		wg.Add(1)
-		go c.asyncBlockAndTx(ctx, logger, wg, chIn)
+		go c.asyncBlockAndTx(ctx, wg, chIn)
 	}
 	go populateRange(chIn, chOut, hr, errored)
 
@@ -511,7 +507,7 @@ RANGE_LOOP:
 		// (lukanus): add timeout
 		case o := <-chOut:
 			if o.Last {
-				logger.Debug("[CLIENT] Finished sending height", zap.Uint64("height", o.Height))
+				c.log.Debug("[CLIENT] Finished sending height", zap.Uint64("height", o.Height))
 				break RANGE_LOOP
 			}
 
@@ -589,11 +585,10 @@ func populateRange(in, out chan hBTx, hr structs.HeightRange, er chan bool) {
 	close(in)
 }
 
-func (c *Client) asyncBlockAndTx(ctx context.Context, logger *zap.Logger, wg *sync.WaitGroup, cinn <-chan hBTx) {
+func (c *Client) asyncBlockAndTx(ctx context.Context, wg *sync.WaitGroup, cinn <-chan hBTx) {
 	defer wg.Done()
 	for in := range cinn {
-
-		b, txs, err := c.blockAndTx(ctx, logger, in.Height)
+		b, txs, err := c.blockAndTx(ctx, in.Height)
 		if err != nil {
 			in.Ch <- cStructs.OutResp{
 				Error: err,
