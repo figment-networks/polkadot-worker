@@ -159,7 +159,8 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 			"timepoint", "when", "task", "id", "result", "judged", "era_index", "session_index", "total_supply",
 			"proposal_hash", "yes", "no", "proxy", "voted", "disambiguation_index", "proxy_type",
 			"anonymous", "kind", "timeslot", "applied", "offline", "candidates", "depositors", "ref_index",
-			"version", "code_hash", "data", "asset_id", "symbol", "decimals", "name", "max_zombies", "remark_hash":
+			"version", "code_hash", "data", "asset_id", "symbol", "decimals", "name", "max_zombies", "remark_hash",
+			"parachain_id", "leaser", "period_begin", "period_count", "extra_reseved", "total_amount":
 			break
 		default:
 			log.Error("Unknown value to parse event", zap.String("unknown_parameter", v), zap.Strings("all_parameters", values), zap.Uint64("height", height))
