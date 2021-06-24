@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/figment-networks/indexer-manager/structs"
+	"github.com/figment-networks/indexer-search/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
-	"go.uber.org/zap"
 
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 const chain_version string = "0.0.1"

@@ -14,8 +14,9 @@ import (
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
 	"github.com/figment-networks/polkadot-worker/utils"
 
-	"github.com/figment-networks/indexer-manager/structs"
+	rStructs "github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
+	"github.com/figment-networks/indexer-search/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
@@ -37,6 +38,7 @@ type IndexerClientTest struct {
 	ChainID  string
 	Currency string
 	Exp      int
+	Network  string
 	ReqID    uuid.UUID
 	Version  string
 
@@ -55,9 +57,10 @@ func (ic *IndexerClientTest) SetupTest() {
 	ic.Require().Nil(err)
 	ic.ReqID = reqID
 
-	ic.ChainID = "polkadot"
+	ic.ChainID = "mainnet"
 	ic.Currency = "DOT"
 	ic.Exp = 10
+	ic.Network = "polkadot"
 	ic.Version = "0.0.1"
 	ic.Height = [2]uint64{5400570, 5400570}
 
@@ -77,7 +80,7 @@ func (ic *IndexerClientTest) SetupTest() {
 		log.Fatal("Error creating decode storage", zap.Error(err))
 	}
 
-	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, &ic.PolkaMock, ds)
+	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, ic.Network, &ic.PolkaMock, ds)
 	ic.ProxyClient = &proxyClientMock
 }
 
@@ -106,7 +109,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_OK() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDAccountBalance,
+		Type:    rStructs.ReqIDAccountBalance,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -171,7 +174,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_ProxyError() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDAccountBalance,
+		Type:    rStructs.ReqIDAccountBalance,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -221,7 +224,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_MapperError() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDAccountBalance,
+		Type:    rStructs.ReqIDAccountBalance,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -249,7 +252,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_MapperError() {
 func (ic *IndexerClientTest) TestGetAccountBalance_UnmarshalError() {
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDAccountBalance,
+		Type:    rStructs.ReqIDAccountBalance,
 		Payload: nil,
 	}
 
@@ -277,7 +280,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 	ic.getLatestRpcResponses()
 	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&ic.Decoded, nil)
 
-	req := structs.LatestDataRequest{
+	req := rStructs.LatestDataRequest{
 		LastHeight: ic.Height[0],
 	}
 
@@ -287,7 +290,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDLatestData,
+		Type:    rStructs.ReqIDLatestData,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -344,7 +347,7 @@ func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
 	ic.getLatestRpcResponses()
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDLatestData,
+		Type:    rStructs.ReqIDLatestData,
 		Payload: make([]byte, 0),
 	}
 
@@ -373,7 +376,7 @@ func (ic *IndexerClientTest) TestGetLatest_DecodeDataError() {
 	e := errors.New("new decode error")
 	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&decodepb.DecodeResponse{}, e)
 
-	req := structs.LatestDataRequest{
+	req := rStructs.LatestDataRequest{
 		LastHeight: uint64(ic.Height[0]),
 	}
 
@@ -383,7 +386,7 @@ func (ic *IndexerClientTest) TestGetLatest_DecodeDataError() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDLatestData,
+		Type:    rStructs.ReqIDLatestData,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -411,7 +414,7 @@ func (ic *IndexerClientTest) TestGetLatest_DecodeDataError() {
 func (ic *IndexerClientTest) TestGetLatest_GetLatestHeightError() {
 	ic.getRpcResponses()
 
-	req := structs.LatestDataRequest{
+	req := rStructs.LatestDataRequest{
 		LastHeight: uint64(ic.Height[0]),
 	}
 
@@ -421,7 +424,7 @@ func (ic *IndexerClientTest) TestGetLatest_GetLatestHeightError() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDLatestData,
+		Type:    rStructs.ReqIDLatestData,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -454,7 +457,7 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 	ic.getRpcResponses()
 	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&ic.Decoded, nil)
 
-	req := structs.HeightRange{
+	req := rStructs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
 		EndHeight:   uint64(ic.Height[1]),
 	}
@@ -463,7 +466,7 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDGetTransactions,
+		Type:    rStructs.ReqIDGetTransactions,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -520,7 +523,7 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 func (ic *IndexerClientTest) TestGetTransactions_HeightRangeUnmarshalError() {
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDGetTransactions,
+		Type:    rStructs.ReqIDGetTransactions,
 		Payload: make([]byte, 0),
 	}
 
@@ -550,7 +553,7 @@ func (ic *IndexerClientTest) TestGetTransactions_DecodeDataError() {
 	e := errors.New("new decode error")
 	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&decodepb.DecodeResponse{}, e)
 
-	req := structs.HeightRange{
+	req := rStructs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
 		EndHeight:   uint64(ic.Height[1]),
 	}
@@ -561,7 +564,7 @@ func (ic *IndexerClientTest) TestGetTransactions_DecodeDataError() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDGetTransactions,
+		Type:    rStructs.ReqIDGetTransactions,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -592,7 +595,7 @@ func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 
 	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&ic.Decoded, nil)
 
-	req := structs.HeightRange{
+	req := rStructs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
 		EndHeight:   uint64(ic.Height[0]),
 	}
@@ -603,7 +606,7 @@ func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDGetTransactions,
+		Type:    rStructs.ReqIDGetTransactions,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)

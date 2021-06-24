@@ -29,7 +29,6 @@ type Client struct {
 
 // NewClient is a polkadot-proxy Client constructor
 func NewClient(log *zap.Logger, rl *rate.Limiter, conns GRPConnectionsIface) *Client {
-
 	return &Client{log: log,
 		rateLimiter: rl,
 		conn:        conns,

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/figment-networks/indexer-manager/structs"
+	"github.com/figment-networks/indexer-search/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/event/eventpb"
 
 	"github.com/pkg/errors"

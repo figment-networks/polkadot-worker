@@ -13,10 +13,9 @@ import (
 	"github.com/figment-networks/polkadot-worker/api"
 	"github.com/figment-networks/polkadot-worker/api/scale"
 	"github.com/figment-networks/polkadot-worker/mapper"
-
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
 
-	"github.com/figment-networks/indexer-manager/structs"
+	"github.com/figment-networks/indexer-search/structs"
 
 	"go.uber.org/zap"
 )
@@ -56,7 +55,7 @@ const PolkadotTypeCurrentEra = "0x5f3e4907f716ac89b6347d15ececedca0b6a45321efae9
 
 var ddrCount = 0
 
-func (c *Client) blockAndTx(ctx context.Context, height uint64) (block *structs.Block, transactions []*structs.Transaction, err error) {
+func (c *Client) blockAndTx(ctx context.Context, height uint64) (block structs.BlockWithMeta, transactions []structs.TransactionWithMeta, err error) {
 	now := time.Now()
 	ch := c.gbPool.Get()
 	defer c.gbPool.Put(ch)
@@ -64,24 +63,24 @@ func (c *Client) blockAndTx(ctx context.Context, height uint64) (block *structs.
 	if height == 0 {
 		height, err = getLatestHeight(c.serverConn, c.Cache, ch)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error getting latest height : %w", err)
+			return structs.BlockWithMeta{}, nil, fmt.Errorf("error getting latest height : %w", err)
 		}
 	}
 
 	blH, pBlH, gpBLH, err := GetBlockHashes(height, c.serverConn, c.Cache, ch)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error unmarshaling block data: %w", err)
+		return structs.BlockWithMeta{}, nil, fmt.Errorf("error unmarshaling block data: %w", err)
 	}
 
 	ddr, pblock, prv, err := getOthers(blH, pBlH, gpBLH, c.serverConn, ch)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error unmarshaling block data: %w", err)
+		return structs.BlockWithMeta{}, nil, fmt.Errorf("error unmarshaling block data: %w", err)
 	}
 	ddr.BlockHash = blH
 
 	meta, err := c.GetMetadata(c.serverConn, ch, gpBLH, prv.SpecName, uint(prv.SpecVersion))
 	if err != nil {
-		return nil, nil, fmt.Errorf("error while getting metadata: %w", err)
+		return structs.BlockWithMeta{}, nil, fmt.Errorf("error while getting metadata: %w", err)
 	}
 
 	ddr.MetadataParent = make([]byte, len(meta.Bytes))
@@ -89,39 +88,55 @@ func (c *Client) blockAndTx(ctx context.Context, height uint64) (block *structs.
 
 	txs, err := GetTransactionsForHeight(c.ds, pblock, meta, int(prv.SpecVersion))
 	if err != nil {
-		return nil, nil, fmt.Errorf("error getTransactionsForHeight: %w", err)
+		return structs.BlockWithMeta{}, nil, fmt.Errorf("error getTransactionsForHeight: %w", err)
 	}
 
 	resp, err := c.proxy.DecodeData(ctx, ddr, height)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error while decoding data: %w", err)
+		return structs.BlockWithMeta{}, nil, fmt.Errorf("error while decoding data: %w", err)
 	}
 
-	if block, err = mapper.BlockMapper(resp.Block, c.chainID, resp.Epoch); err != nil {
-		return nil, nil, fmt.Errorf("error while mapping block: %w", err)
+	b, err := mapper.BlockMapper(resp.Block, c.chainID, resp.Epoch)
+	if err != nil {
+		return structs.BlockWithMeta{}, nil, fmt.Errorf("error while mapping block: %w", err)
+	}
+
+	block = structs.BlockWithMeta{
+		Network: c.network,
+		ChainID: c.chainID,
+		Version: "0.0.1",
+		Block:   *b,
 	}
 
 	if len(resp.Block.Block.Extrinsics) == 0 {
 		return block, nil, nil
 	}
 
-	if transactions, err = c.trMapper.TransactionsMapper(resp.Block); err != nil {
-		return nil, nil, fmt.Errorf("error while mapping transactions: %w", err)
+	trs, err := c.trMapper.TransactionsMapper(resp.Block)
+	if err != nil {
+		return structs.BlockWithMeta{}, nil, fmt.Errorf("error while mapping transactions: %w", err)
 	}
+
+	transactions = make([]structs.TransactionWithMeta, len(trs))
 
 	// pair transactions with ids
 	var found bool
-	for k, t := range transactions {
+	for k, t := range trs {
 		found = false
 	TXS_LOOP:
 		for extIndex, rawTx := range txs {
 			if t.Hash[2:] == rawTx.ExtrinsicHash {
 				found = true
 				for in, ev := range t.Events {
-					ev.ID = fmt.Sprintf("%d-%d", block.Height, extIndex)
+					ev.ID = fmt.Sprintf("%d-%d", b.Height, extIndex)
 					t.Events[in] = ev
 				}
-				transactions[k] = t
+				transactions[k] = structs.TransactionWithMeta{
+					Network:     c.network,
+					ChainID:     c.chainID,
+					Version:     "0.0.1",
+					Transaction: *t,
+				}
 				break TXS_LOOP
 			}
 		}
@@ -130,11 +145,16 @@ func (c *Client) blockAndTx(ctx context.Context, height uint64) (block *structs.
 				candidateTx := txs[k]
 				for in, ev := range t.Events {
 					if strings.ToLower(candidateTx.CallModule.Name) == ev.Module && ev.Kind == "Extrinsic" {
-						ev.ID = fmt.Sprintf("%d-%d", block.Height, k)
+						ev.ID = fmt.Sprintf("%d-%d", b.Height, k)
 						t.Events[in] = ev
 					}
 				}
-				transactions[k] = t
+				transactions[k] = structs.TransactionWithMeta{
+					Network:     c.network,
+					ChainID:     c.chainID,
+					Version:     "0.0.1",
+					Transaction: *t,
+				}
 			}
 		}
 	}

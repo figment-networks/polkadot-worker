@@ -1,7 +1,6 @@
 package indexer
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,8 +13,11 @@ import (
 	"github.com/figment-networks/polkadot-worker/mapper"
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
 
-	"github.com/figment-networks/indexer-manager/structs"
+	rStructs "github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
+	"github.com/figment-networks/indexer-search/common/process/ranged"
+	searchHTTP "github.com/figment-networks/indexer-search/common/store/transport/http"
+	"github.com/figment-networks/indexer-search/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
@@ -69,6 +71,7 @@ type Client struct {
 	currency        string
 	exp             int
 	maxHeightsToGet uint64
+	network         string
 
 	serverConn PolkaClient
 	gbPool     *getBlockPool
@@ -78,14 +81,16 @@ type Client struct {
 	sLock   sync.Mutex
 	streams map[uuid.UUID]*cStructs.StreamAccess
 
-	ds *scale.DecodeStorage
+	ds          *scale.DecodeStorage
+	Reqester    *ranged.RangeRequester
+	searchStore *searchHTTP.HTTPStore
 
 	abMapper *mapper.AccountBalanceMapper
 	trMapper *mapper.TransactionMapper
 }
 
 // NewClient is a indexer-manager Client constructor
-func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint64, chainID, currency string, serverConn PolkaClient, ds *scale.DecodeStorage) *Client {
+func NewClient(log *zap.Logger, proxy ClientIface, ds *scale.DecodeStorage, ss *searchHTTP.HTTPStore, serverConn PolkaClient, exp int, maxHeightsToGet uint64, chainID, currency, network string) *Client {
 	getAccountBalanceDuration = endpointDuration.WithLabels("getAccountBalance")
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
@@ -95,23 +100,29 @@ func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint
 		panic(fmt.Errorf("cache cannot be defined: %w", err)) // we really need to fatal here. this should not happen.
 	}
 
-	return &Client{
+	ic := &Client{
 		chainID:         chainID,
 		currency:        currency,
 		exp:             exp,
 		maxHeightsToGet: maxHeightsToGet,
+		network:         network,
 		gbPool:          NewGetBlockPool(300),
 		Cache: &ClientCache{
 			BlockHashCache: newLru,
 		},
-		ds:         ds,
-		log:        log,
-		proxy:      proxy,
-		serverConn: serverConn,
-		streams:    make(map[uuid.UUID]*cStructs.StreamAccess),
-		abMapper:   mapper.NewAccountBalanceMapper(exp, currency),
-		trMapper:   mapper.NewTransactionMapper(exp, log, chainID, currency),
+		ds:          ds,
+		searchStore: ss,
+		log:         log,
+		proxy:       proxy,
+		serverConn:  serverConn,
+		streams:     make(map[uuid.UUID]*cStructs.StreamAccess),
+		abMapper:    mapper.NewAccountBalanceMapper(exp, currency),
+		trMapper:    mapper.NewTransactionMapper(exp, log, chainID, currency),
 	}
+
+	ic.Reqester = ranged.NewRangeRequester(ic, 20)
+
+	return ic
 }
 
 // RegisterStream adds new listeners to the stream
@@ -158,12 +169,12 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 			defer cancel()
 
 			switch taskRequest.Type {
-			case structs.ReqIDAccountBalance:
+			case rStructs.ReqIDAccountBalance:
 				c.GetAccountBalance(ctxWithTimeout, taskRequest, stream)
-			case structs.ReqIDGetTransactions:
+			case rStructs.ReqIDGetTransactions:
 				c.GetTransactions(ctxWithTimeout, taskRequest, stream)
-			case structs.ReqIDLatestData:
-				c.GetLatest(ctxWithTimeout, taskRequest, stream)
+			case rStructs.ReqIDLatestData:
+				c.GetLatestMark(ctxWithTimeout, taskRequest, stream)
 			default:
 				stream.Send(cStructs.TaskResponse{
 					Id: taskRequest.Id,
@@ -204,12 +215,8 @@ func (c *Client) GetAccountBalance(ctx context.Context, tr cStructs.TaskRequest,
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	out := make(chan cStructs.OutResp, 2)
-	fin := make(chan bool, 2)
-
-	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
-
-	if err := c.sendAccountBalance(ctx, hr.Account, hr.Height, out); err != nil {
+	balanceSummary, err := c.getBalanceSummary(ctx, stream, hr.Account, hr.Height)
+	if err != nil {
 		stream.Send(cStructs.TaskResponse{
 			Id: tr.Id,
 			Error: cStructs.TaskError{
@@ -217,117 +224,86 @@ func (c *Client) GetAccountBalance(ctx context.Context, tr cStructs.TaskRequest,
 			},
 			Final: true,
 		})
-		close(out)
 		return
 	}
 
-	close(out)
-	for {
-		select {
-		case <-ctx.Done():
-			c.log.Debug("Context done", zap.Stringer("taskID", tr.Id))
-			return
-		case <-fin:
-			c.log.Debug("Finished sending all", zap.Stringer("taskID", tr.Id))
-			return
-		}
+	tResp := cStructs.TaskResponse{Id: tr.Id, Type: "AccountBalance", Order: 0, Final: true}
+	tResp.Payload, err = json.Marshal(balanceSummary)
+
+	if err != nil {
+		c.log.Error("[CELO-CLIENT] Error encoding payload data", zap.Error(err))
+	}
+
+	if err := stream.Send(tResp); err != nil {
+		c.log.Error("[CELO-CLIENT] Error sending end", zap.Error(err))
 	}
 }
 
-func (c *Client) sendAccountBalance(ctx context.Context, account string, height uint64, out chan cStructs.OutResp) error {
+func (c *Client) getBalanceSummary(ctx context.Context, stream *cStructs.StreamAccess, account string, height uint64) (*structs.GetAccountBalanceResponse, error) {
 	accountBalanceResp, err := c.proxy.GetAccountBalance(ctx, account, height)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	balanceSummary, err := c.abMapper.AccountBalanceMapper(accountBalanceResp, height)
-	if err != nil {
-		return err
-	}
-
-	out <- cStructs.OutResp{
-		Type:    "AccountBalance",
-		Payload: *balanceSummary,
-	}
-
-	return nil
+	return c.abMapper.AccountBalanceMapper(accountBalanceResp, height)
 }
 
 // GetLatest returns latest Block's Transactions
-func (c *Client) GetLatest(ctx context.Context, tr cStructs.TaskRequest, stream *cStructs.StreamAccess) {
+func (c *Client) GetLatestMark(ctx context.Context, tr cStructs.TaskRequest, stream *cStructs.StreamAccess) {
 	timer := metrics.NewTimer(getLatestDuration)
 	defer timer.ObserveDuration()
 
-	var ldr structs.LatestDataRequest
-	var err error
-
-	if err = json.Unmarshal(tr.Payload, &ldr); err != nil {
-		err = ErrBadRequest
-	}
-
+	ldr := &rStructs.LatestDataRequest{}
+	err := json.Unmarshal(tr.Payload, ldr)
 	if err != nil {
-		stream.Send(cStructs.TaskResponse{
-			Id: tr.Id,
-			Error: cStructs.TaskError{
-				Msg: fmt.Sprintf("Cannot unmarshal payload: %s", err.Error()),
-			},
-			Final: true,
-		})
-		return
+		stream.Send(cStructs.TaskResponse{Id: tr.Id, Error: cStructs.TaskError{Msg: "Cannot unmarshal payload"}, Final: true})
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	sCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
-	out := make(chan cStructs.OutResp, page*2+1)
-	fin := make(chan bool, 2)
-
-	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
-
 	ch := c.gbPool.Get()
-	defer c.gbPool.Put(ch)
 	height, err := getLatestHeight(c.serverConn, c.Cache, ch)
 	if err != nil {
 		stream.Send(cStructs.TaskResponse{
 			Id:    tr.Id,
-			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch head from proxy: %s", err.Error())},
+			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch latest height from proxy: %s", err.Error())},
 			Final: true,
 		})
 		return
 	}
 
-	hr := c.getLatestBlockHeightRange(ctx, ldr.LastHeight, height)
-
-	if err := c.sendTransactionsInRange(ctx, hr, out); err != nil {
+	block, err := c.proxy.GetBlockByHeight(sCtx, height)
+	if err != nil {
 		stream.Send(cStructs.TaskResponse{
 			Id:    tr.Id,
-			Error: cStructs.TaskError{Msg: fmt.Sprintf("Error while getting Transactions with given range: %s", err.Error())},
+			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch block from proxy: %s", err.Error())},
 			Final: true,
 		})
-		close(out)
 		return
 	}
 
-	c.log.Debug("Received all", zap.Stringer("taskID", tr.Id))
-	close(out)
+	tResp := cStructs.TaskResponse{Id: tr.Id, Type: "LatestMark", Order: 0, Final: true}
+	tResp.Payload, err = json.Marshal(rStructs.LatestDataResponse{
+		LastHash:   block.Block.BlockHash,
+		LastHeight: uint64(block.Block.Header.Height),
+		LastTime:   block.Block.Header.Time.AsTime(),
+	})
 
-	for {
-		select {
-		case <-ctx.Done():
-			c.log.Debug("Context done", zap.Stringer("taskID", tr.Id))
-			return
-		case <-fin:
-			c.log.Debug("Finished sending all", zap.Stringer("taskID", tr.Id))
-			return
-		}
+	if err != nil {
+		c.log.Error("[CELO-CLIENT] Error encoding payload data", zap.Error(err))
+	}
+
+	if err := stream.Send(tResp); err != nil {
+		c.log.Error("[CELO-CLIENT] Error sending end", zap.Error(err))
 	}
 }
 
-func (c *Client) getLatestBlockHeightRange(ctx context.Context, lastHeight, lastHeightFromProxy uint64) structs.HeightRange {
+func (c *Client) getLatestBlockHeightRange(ctx context.Context, lastHeight, lastHeightFromProxy uint64) rStructs.HeightRange {
 	if lastHeight == 0 {
 		startheight := lastHeightFromProxy - c.maxHeightsToGet
 		if startheight > 0 {
-			return structs.HeightRange{
+			return rStructs.HeightRange{
 				StartHeight: startheight,
 				EndHeight:   lastHeightFromProxy,
 			}
@@ -335,13 +311,13 @@ func (c *Client) getLatestBlockHeightRange(ctx context.Context, lastHeight, last
 	}
 
 	if c.maxHeightsToGet < lastHeightFromProxy-lastHeight {
-		return structs.HeightRange{
+		return rStructs.HeightRange{
 			StartHeight: lastHeightFromProxy - c.maxHeightsToGet,
 			EndHeight:   lastHeightFromProxy,
 		}
 	}
 
-	return structs.HeightRange{
+	return rStructs.HeightRange{
 		StartHeight: lastHeight,
 		EndHeight:   lastHeightFromProxy,
 	}
@@ -352,7 +328,7 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 	timer := metrics.NewTimer(getTransactionDuration)
 	defer timer.ObserveDuration()
 
-	var hr structs.HeightRange
+	var hr rStructs.HeightRange
 	var err error
 
 	if err = json.Unmarshal(tr.Payload, &hr); hr.StartHeight == 0 || hr.EndHeight == 0 {
@@ -372,7 +348,7 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 	}
 
 	if hr.StartHeight > hr.EndHeight {
-		c.log.Debug("Cannot unmarshal payload", zap.String("contents", string(tr.Payload)))
+		c.log.Debug("Bad range, start height is too high", zap.String("contents", string(tr.Payload)))
 		stream.Send(cStructs.TaskResponse{
 			Id: tr.Id,
 			Error: cStructs.TaskError{
@@ -383,253 +359,58 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 		return
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	c.log.Debug("[CELO-CLIENT] Getting Range", zap.Stringer("taskID", tr.Id), zap.Uint64("start", hr.StartHeight), zap.Uint64("end", hr.EndHeight))
 
-	out := make(chan cStructs.OutResp, page*2+1)
-	fin := make(chan bool, 2)
-
-	go c.sendRespLoop(ctx, tr.Id, out, stream, fin)
-
-	if err := c.sendTransactionsInRange(ctx, hr, out); err != nil {
-		stream.Send(cStructs.TaskResponse{
-			Id: tr.Id,
-			Error: cStructs.TaskError{
-				Msg: fmt.Sprintf("Error while sending Transactions with given range: %s", err.Error()),
-			},
-			Final: true,
-		})
-		close(out)
-		return
-	}
-
-	c.log.Debug("Received all", zap.Stringer("taskID", tr.Id))
-	close(out)
-
-	for {
-		select {
-		case <-ctx.Done():
-			c.log.Debug("Context done", zap.Stringer("taskID", tr.Id))
-			return
-		case <-fin:
-			c.log.Debug("Finished sending all", zap.Stringer("taskID", tr.Id))
-			return
-		}
-	}
-}
-
-func (c *Client) sendRespLoop(ctx context.Context, id uuid.UUID, in <-chan cStructs.OutResp, stream *cStructs.StreamAccess, fin chan bool) {
-	var ctxDone bool
-	order := uint64(0)
-
-SendLoop:
-	for {
-		select {
-		case <-ctx.Done():
-			ctxDone = true
-			break SendLoop
-		case t, ok := <-in:
-			if !ok {
-				break SendLoop
-			}
-
-			c.sendResp(id, t.Type, t.Error, t.Payload, order, stream)
-
-			if t.Error != nil {
-				break SendLoop
-			}
-			order++
-		}
-	}
-
-	if err := stream.Send(cStructs.TaskResponse{
-		Id:    id,
-		Type:  "END",
-		Order: order,
+	heights, err := c.Reqester.GetRange(ctx, hr)
+	resp := &cStructs.TaskResponse{
+		Id:    tr.Id,
+		Type:  "Heights",
 		Final: true,
-	}); err != nil {
-		c.log.Error("Error while sending end response %w", zap.Error(err))
 	}
-
-	if fin != nil {
-		if !ctxDone {
-			fin <- true
-		}
-		close(fin)
+	if heights.NumberOfHeights > 0 {
+		resp.Payload, _ = json.Marshal(heights)
 	}
-}
-
-func (c *Client) sendResp(id uuid.UUID, taskType string, err error, payload interface{}, order uint64, stream *cStructs.StreamAccess) {
-	var buffer bytes.Buffer
-	enc := json.NewEncoder(&buffer)
-	if err := enc.Encode(payload); err != nil {
-		c.log.Error("Cannot encode payload %w", zap.Error(err))
-	}
-
-	tr := cStructs.TaskResponse{
-		Id:      id,
-		Type:    taskType,
-		Order:   order,
-		Payload: make([]byte, buffer.Len()),
-	}
-	buffer.Read(tr.Payload)
 
 	if err != nil {
-		tr.Error.Msg = err.Error()
-		tr.Final = true
+		resp.Error = cStructs.TaskError{Msg: err.Error()}
+		c.log.Error("[CELO-CLIENT] Error getting range (Get Transactions) ", zap.Error(err), zap.Stringer("taskID", tr.Id))
+		if err := stream.Send(*resp); err != nil {
+			c.log.Error("[CELO-CLIENT] Error sending message (Get Transactions) ", zap.Error(err), zap.Stringer("taskID", tr.Id))
+		}
+		return
 	}
-
-	if err := stream.Send(tr); err != nil {
-		c.log.Error("Error while sending response %w", zap.Error(err))
+	if err := stream.Send(*resp); err != nil {
+		c.log.Error("[CELO-CLIENT] Error sending message (Get Transactions) ", zap.Error(err), zap.Stringer("taskID", tr.Id))
 	}
+	c.log.Debug("[CELO-CLIENT] Finished sending all", zap.Stringer("taskID", tr.Id), zap.Any("heights", hr))
 }
 
-// getRange gets given range of blocks and transactions
-func (c *Client) sendTransactionsInRange(ctx context.Context, hr structs.HeightRange, out chan cStructs.OutResp) (err error) {
+func (c *Client) BlockAndTx(ctx context.Context, height uint64) (blockWM structs.BlockWithMeta, txsWM []structs.TransactionWithMeta, err error) {
 	defer c.log.Sync()
+	c.log.Debug("[CELO-CLIENT] Getting height", zap.Uint64("block", height))
 
-	chIn := oHBTxPool.Get()
-	chOut := oHBTxPool.Get()
-
-	errored := make(chan bool, 40)
-	defer close(errored)
-
-	wg := &sync.WaitGroup{}
-	for i := 0; i < 40; i++ {
-		wg.Add(1)
-		go c.asyncBlockAndTx(ctx, wg, chIn)
+	blockWM, txsWM, err = c.blockAndTx(ctx, height)
+	if err != nil {
+		c.log.Error("[CELO-CLIENT] Error while getting block and transactions", zap.Uint64("block", height), zap.Error(err), zap.Uint64("txs", blockWM.Block.NumberOfTransactions))
+		return structs.BlockWithMeta{}, nil, fmt.Errorf("error fetching block and transactions: %d %w ", uint64(height), err)
 	}
-	go populateRange(chIn, chOut, hr, errored)
 
-RANGE_LOOP:
-	for {
-		select {
-		// (lukanus): add timeout
-		case o := <-chOut:
-			if o.Last {
-				c.log.Debug("[CLIENT] Finished sending height", zap.Uint64("height", o.Height))
-				break RANGE_LOOP
-			}
+	hSess, err := c.searchStore.GetSession(ctx)
+	if err != nil {
+		return structs.BlockWithMeta{}, nil, fmt.Errorf("Error while getting store session: %s", err.Error())
+	}
 
-		INNER_LOOP:
-			for resp := range o.Ch {
-				switch resp.Type {
-				case "Partial":
-					break INNER_LOOP
-				case "Error":
-					errored <- true // (lukanus): to close publisher and asyncBlockAndTx
-					err = resp.Error
-					out <- resp
-					break RANGE_LOOP
-				default:
-					out <- resp
-				}
-			}
-			oRespPool.Put(o.Ch)
+	c.log.Debug("Store block", zap.Uint64("height", height), zap.Uint64("txs", blockWM.Block.NumberOfTransactions))
+	if err := hSess.StoreBlocks(ctx, []structs.BlockWithMeta{blockWM}); err != nil {
+		return structs.BlockWithMeta{}, nil, fmt.Errorf("Error while storing block: %s", err.Error())
+	}
+
+	if len(txsWM) > 0 {
+		c.log.Debug("Store transactions", zap.Uint64("height", height), zap.Uint64("txs", blockWM.Block.NumberOfTransactions))
+		if err := hSess.StoreTransactions(ctx, txsWM); err != nil {
+			return structs.BlockWithMeta{}, nil, fmt.Errorf("Error while storing transactions: %s", err.Error())
 		}
 	}
 
-	if err != nil { // (lukanus): discard everything on error, after error
-		wg.Wait() // (lukanus): make sure there are no outstanding producers
-	PURIFY_CHANNELS:
-		for {
-			select {
-			case o := <-chOut:
-				if o.Ch != nil {
-				PURIFY_INNER_CHANNELS:
-					for {
-						select {
-						case <-o.Ch:
-						default:
-							break PURIFY_INNER_CHANNELS
-						}
-					}
-				}
-				oRespPool.Put(o.Ch)
-			default:
-				break PURIFY_CHANNELS
-			}
-		}
-	}
-	oHBTxPool.Put(chOut)
-	return err
-}
-
-func populateRange(in, out chan hBTx, hr structs.HeightRange, er chan bool) {
-	height := hr.StartHeight
-
-	for {
-		hBTxO := hBTx{Height: height, Ch: oRespPool.Get()}
-		select {
-		case out <- hBTxO:
-		case <-er:
-			break
-		}
-
-		select {
-		case in <- hBTxO:
-		case <-er:
-			break
-		}
-
-		height++
-		if height > hr.EndHeight {
-			select {
-			case out <- hBTx{Last: true}:
-			case <-er:
-			}
-			break
-		}
-
-	}
-	close(in)
-}
-
-func (c *Client) asyncBlockAndTx(ctx context.Context, wg *sync.WaitGroup, cinn <-chan hBTx) {
-	defer wg.Done()
-	for in := range cinn {
-		b, txs, err := c.blockAndTx(ctx, in.Height)
-		if err != nil {
-			in.Ch <- cStructs.OutResp{
-				Error: err,
-				Type:  "Error",
-			}
-			return
-		}
-		in.Ch <- cStructs.OutResp{
-			Type:    "Block",
-			Payload: b,
-		}
-
-		for _, t := range txs {
-			in.Ch <- cStructs.OutResp{
-				Type:    "Transaction",
-				Payload: t,
-			}
-		}
-
-		in.Ch <- cStructs.OutResp{
-			Type: "Partial",
-		}
-
-	}
-}
-
-func (c *Client) wrapErrorsFromChan(errChan chan error) error {
-	var errors []error
-	for err := range errChan {
-		if err != nil {
-			errors = append(errors, err)
-		}
-	}
-
-	if len(errors) > 0 {
-		errStr := ""
-		for _, err := range errors {
-			errStr += err.Error() + " , "
-		}
-		return fmt.Errorf(fmt.Sprintf("%s", errStr))
-	}
-
-	return nil
+	return blockWM, txsWM, nil
 }
