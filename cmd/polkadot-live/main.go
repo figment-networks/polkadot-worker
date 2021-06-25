@@ -92,7 +92,7 @@ func main() {
 		log.Fatal("Error creating decode storage", zap.Error(err))
 	}
 
-	client := indexer.NewClient(logger.GetLogger(), nil, 0, 0, "", "", connApi, ds)
+	client := indexer.NewClient(logger.GetLogger(), nil, ds, nil, connApi, 0, 0, "", "", "")
 	connector := thttp.NewConnector(client, logger.GetLogger())
 
 	mux := http.NewServeMux()

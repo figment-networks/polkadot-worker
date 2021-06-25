@@ -4,9 +4,10 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/utils"
+
+	"github.com/figment-networks/indexing-engine/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/decode/decodepb"
 
 	"github.com/stretchr/testify/suite"

@@ -14,8 +14,10 @@ import (
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
 	"github.com/figment-networks/polkadot-worker/utils"
 
-	"github.com/figment-networks/indexer-manager/structs"
+	rStructs "github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
+	"github.com/figment-networks/indexing-engine/structs"
+	"github.com/figment-networks/indexing-engine/worker/store"
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
@@ -37,6 +39,7 @@ type IndexerClientTest struct {
 	ChainID  string
 	Currency string
 	Exp      int
+	Network  string
 	ReqID    uuid.UUID
 	Version  string
 
@@ -46,8 +49,9 @@ type IndexerClientTest struct {
 	Decoded      decodepb.DecodeResponse
 	Transactions transactions
 
-	PolkaMock   PolkaClientMock
-	ProxyClient *proxyClientMock
+	DataStoreMock dataStoreMock
+	PolkaMock     PolkaClientMock
+	ProxyClient   *proxyClientMock
 }
 
 func (ic *IndexerClientTest) SetupTest() {
@@ -55,9 +59,10 @@ func (ic *IndexerClientTest) SetupTest() {
 	ic.Require().Nil(err)
 	ic.ReqID = reqID
 
-	ic.ChainID = "polkadot"
+	ic.ChainID = "mainnet"
 	ic.Currency = "DOT"
 	ic.Exp = 10
+	ic.Network = "polkadot"
 	ic.Version = "0.0.1"
 	ic.Height = [2]uint64{5400570, 5400570}
 
@@ -70,6 +75,10 @@ func (ic *IndexerClientTest) SetupTest() {
 	ic.Ctx = ctx
 	ic.CtxCancel = ctxCancel
 
+	dataStoreMock := dataStoreMock{
+		searchStore: searchStoreMock{},
+	}
+	ic.DataStoreMock = dataStoreMock
 	ic.PolkaMock = PolkaClientMock{}
 
 	ds := scale.NewDecodeStorage()
@@ -77,7 +86,7 @@ func (ic *IndexerClientTest) SetupTest() {
 		log.Fatal("Error creating decode storage", zap.Error(err))
 	}
 
-	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, &ic.PolkaMock, ds)
+	ic.Client = indexer.NewClient(log, &proxyClientMock, ds, &dataStoreMock, &ic.PolkaMock, ic.Exp, 1000, ic.ChainID, ic.Currency, ic.Network)
 	ic.ProxyClient = &proxyClientMock
 }
 
@@ -106,7 +115,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_OK() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDAccountBalance,
+		Type:    rStructs.ReqIDAccountBalance,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -171,7 +180,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_ProxyError() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDAccountBalance,
+		Type:    rStructs.ReqIDAccountBalance,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -221,7 +230,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_MapperError() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDAccountBalance,
+		Type:    rStructs.ReqIDAccountBalance,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -249,7 +258,7 @@ func (ic *IndexerClientTest) TestGetAccountBalance_MapperError() {
 func (ic *IndexerClientTest) TestGetAccountBalance_UnmarshalError() {
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDAccountBalance,
+		Type:    rStructs.ReqIDAccountBalance,
 		Payload: nil,
 	}
 
@@ -287,7 +296,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDLatestData,
+		Type:    rStructs.ReqIDLatestData,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -344,7 +353,7 @@ func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
 	ic.getLatestRpcResponses()
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDLatestData,
+		Type:    rStructs.ReqIDLatestData,
 		Payload: make([]byte, 0),
 	}
 
@@ -383,7 +392,7 @@ func (ic *IndexerClientTest) TestGetLatest_DecodeDataError() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDLatestData,
+		Type:    rStructs.ReqIDLatestData,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -421,7 +430,7 @@ func (ic *IndexerClientTest) TestGetLatest_GetLatestHeightError() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDLatestData,
+		Type:    rStructs.ReqIDLatestData,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -463,7 +472,7 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDGetTransactions,
+		Type:    rStructs.ReqIDGetTransactions,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -520,7 +529,7 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 func (ic *IndexerClientTest) TestGetTransactions_HeightRangeUnmarshalError() {
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDGetTransactions,
+		Type:    rStructs.ReqIDGetTransactions,
 		Payload: make([]byte, 0),
 	}
 
@@ -561,7 +570,7 @@ func (ic *IndexerClientTest) TestGetTransactions_DecodeDataError() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDGetTransactions,
+		Type:    rStructs.ReqIDGetTransactions,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -603,7 +612,7 @@ func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    structs.ReqIDGetTransactions,
+		Type:    rStructs.ReqIDGetTransactions,
 		Payload: make([]byte, buffer.Len()),
 	}
 	buffer.Read(tr.Payload)
@@ -720,4 +729,39 @@ func (m proxyClientMock) GetTransactionsByHeight(ctx context.Context, height uin
 func (m proxyClientMock) DecodeData(ctx context.Context, ddr wStructs.DecodeDataRequest, height uint64) (*decodepb.DecodeResponse, error) {
 	args := m.Called(ctx, ddr, height)
 	return args.Get(0).(*decodepb.DecodeResponse), args.Error(1)
+}
+
+type dataStoreMock struct {
+	mock.Mock
+
+	searchStore searchStoreMock
+}
+
+func (m dataStoreMock) GetRewardsSession(ctx context.Context) (store.RewardStore, error) {
+	args := m.Called(ctx)
+	return nil, args.Error(1)
+}
+
+func (m dataStoreMock) GetSearchSession(ctx context.Context) (store.SearchStore, error) {
+	args := m.Called(ctx)
+	return m.searchStore, args.Error(1)
+}
+
+type searchStoreMock struct {
+	mock.Mock
+}
+
+func (m searchStoreMock) StoreTransactions(ctx context.Context, txs []structs.TransactionWithMeta) error {
+	args := m.Called(ctx, txs)
+	return args.Error(0)
+}
+
+func (m searchStoreMock) StoreBlocks(ctx context.Context, blocks []structs.BlockWithMeta) error {
+	args := m.Called(ctx, blocks)
+	return args.Error(0)
+}
+
+func (m searchStoreMock) ConfirmHeights(ctx context.Context, heights []structs.BlockWithMeta) error {
+	args := m.Called(ctx, heights)
+	return args.Error(0)
 }

@@ -51,6 +51,8 @@ type Config struct {
 
 	Currency string `json:"currency" envconfig:"CURRENCY" default:"DOT"`
 	Exp      int    `json:"exp" envconfig:"EXP"`
+
+	StoreHTTPEndpoints string `json:"store_http_endpoints" envconfig:"STORE_HTTP_ENDPOINTS"`
 }
 
 // FromFile reads the config from a file

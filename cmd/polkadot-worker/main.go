@@ -24,6 +24,7 @@ import (
 	"github.com/figment-networks/indexing-engine/health"
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/indexing-engine/metrics/prometheusmetrics"
+	searchHTTP "github.com/figment-networks/indexing-engine/worker/store/transport/http"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -156,8 +157,10 @@ func getConfig(path string) (cfg *config.Config, err error) {
 }
 
 func createIndexerClient(ctx context.Context, log *zap.Logger, cfg *config.Config, conns *proxy.GRPConnections, connApi *api.Conn, ds *scale.DecodeStorage) *indexer.Client {
+	storeEndpoints := strings.Split(cfg.StoreHTTPEndpoints, ",")
+	searchStore := searchHTTP.NewHTTPStore(storeEndpoints, http.DefaultClient)
 	rateLimiter := rate.NewLimiter(rate.Limit(cfg.ReqPerSecond), cfg.ReqPerSecond)
-	return indexer.NewClient(log, proxy.NewClient(log, rateLimiter, conns), cfg.Exp, uint64(cfg.MaximumHeightsToGet), cfg.ChainID, cfg.Currency, connApi, ds)
+	return indexer.NewClient(log, proxy.NewClient(log, rateLimiter, conns), ds, searchStore, connApi, cfg.Exp, uint64(cfg.MaximumHeightsToGet), cfg.ChainID, cfg.Currency, cfg.Network)
 }
 
 func registerWorker(ctx context.Context, l *zap.Logger, cfg *config.Config) {

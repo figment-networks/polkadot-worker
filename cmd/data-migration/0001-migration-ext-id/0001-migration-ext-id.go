@@ -13,12 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/figment-networks/indexer-manager/manager/store/params"
-	"github.com/figment-networks/indexer-manager/structs"
 	"github.com/figment-networks/polkadot-worker/api"
 	"github.com/figment-networks/polkadot-worker/api/scale"
 	"github.com/figment-networks/polkadot-worker/cmd/polkadot-live/logger"
 	"github.com/figment-networks/polkadot-worker/indexer"
+
+	"github.com/figment-networks/indexing-engine/structs"
+	"github.com/figment-networks/indexing-engine/worker/store/params"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
@@ -77,7 +78,7 @@ func main() {
 		log.Fatal("Error creating decode storage", zap.Error(err))
 	}
 
-	client := indexer.NewClient(logger.GetLogger(), nil, 0, 0, chain, "", connApi, ds)
+	client := indexer.NewClient(logger.GetLogger(), nil, ds, nil, connApi, 0, 0, chain, "", "")
 
 	logger.Info("[DB] Ping successfull...")
 	defer db.Close()

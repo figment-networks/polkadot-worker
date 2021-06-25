@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/figment-networks/indexer-manager/structs"
+	"github.com/figment-networks/indexing-engine/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 )
 
