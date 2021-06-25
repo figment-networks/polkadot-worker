@@ -5,7 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/figment-networks/indexer-search/structs"
+	"github.com/figment-networks/indexing-engine/structs"
 
 	"github.com/stretchr/testify/suite"
 )

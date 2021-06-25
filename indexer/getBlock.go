@@ -15,7 +15,7 @@ import (
 	"github.com/figment-networks/polkadot-worker/mapper"
 	wStructs "github.com/figment-networks/polkadot-worker/structs"
 
-	"github.com/figment-networks/indexer-search/structs"
+	"github.com/figment-networks/indexing-engine/structs"
 
 	"go.uber.org/zap"
 )

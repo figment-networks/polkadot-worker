@@ -18,8 +18,8 @@ import (
 	"github.com/figment-networks/polkadot-worker/cmd/polkadot-live/logger"
 	"github.com/figment-networks/polkadot-worker/indexer"
 
-	"github.com/figment-networks/indexer-search/store/params"
-	"github.com/figment-networks/indexer-search/structs"
+	"github.com/figment-networks/indexing-engine/structs"
+	"github.com/figment-networks/indexing-engine/worker/store/params"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"

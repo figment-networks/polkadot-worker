@@ -21,10 +21,10 @@ import (
 	"github.com/figment-networks/indexer-manager/worker/connectivity"
 	grpcIndexer "github.com/figment-networks/indexer-manager/worker/transport/grpc"
 	grpcProtoIndexer "github.com/figment-networks/indexer-manager/worker/transport/grpc/indexer"
-	searchHTTP "github.com/figment-networks/indexer-search/common/store/transport/http"
 	"github.com/figment-networks/indexing-engine/health"
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/indexing-engine/metrics/prometheusmetrics"
+	searchHTTP "github.com/figment-networks/indexing-engine/worker/store/transport/http"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"

@@ -16,7 +16,8 @@ import (
 
 	rStructs "github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
-	"github.com/figment-networks/indexer-search/structs"
+	"github.com/figment-networks/indexing-engine/structs"
+	"github.com/figment-networks/indexing-engine/worker/store"
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
@@ -48,8 +49,9 @@ type IndexerClientTest struct {
 	Decoded      decodepb.DecodeResponse
 	Transactions transactions
 
-	PolkaMock   PolkaClientMock
-	ProxyClient *proxyClientMock
+	DataStoreMock dataStoreMock
+	PolkaMock     PolkaClientMock
+	ProxyClient   *proxyClientMock
 }
 
 func (ic *IndexerClientTest) SetupTest() {
@@ -73,6 +75,10 @@ func (ic *IndexerClientTest) SetupTest() {
 	ic.Ctx = ctx
 	ic.CtxCancel = ctxCancel
 
+	dataStoreMock := dataStoreMock{
+		searchStore: searchStoreMock{},
+	}
+	ic.DataStoreMock = dataStoreMock
 	ic.PolkaMock = PolkaClientMock{}
 
 	ds := scale.NewDecodeStorage()
@@ -80,7 +86,7 @@ func (ic *IndexerClientTest) SetupTest() {
 		log.Fatal("Error creating decode storage", zap.Error(err))
 	}
 
-	ic.Client = indexer.NewClient(log, &proxyClientMock, ic.Exp, 1000, ic.ChainID, ic.Currency, ic.Network, &ic.PolkaMock, ds)
+	ic.Client = indexer.NewClient(log, &proxyClientMock, ds, &dataStoreMock, &ic.PolkaMock, ic.Exp, 1000, ic.ChainID, ic.Currency, ic.Network)
 	ic.ProxyClient = &proxyClientMock
 }
 
@@ -280,7 +286,7 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 	ic.getLatestRpcResponses()
 	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&ic.Decoded, nil)
 
-	req := rStructs.LatestDataRequest{
+	req := structs.LatestDataRequest{
 		LastHeight: ic.Height[0],
 	}
 
@@ -376,7 +382,7 @@ func (ic *IndexerClientTest) TestGetLatest_DecodeDataError() {
 	e := errors.New("new decode error")
 	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&decodepb.DecodeResponse{}, e)
 
-	req := rStructs.LatestDataRequest{
+	req := structs.LatestDataRequest{
 		LastHeight: uint64(ic.Height[0]),
 	}
 
@@ -414,7 +420,7 @@ func (ic *IndexerClientTest) TestGetLatest_DecodeDataError() {
 func (ic *IndexerClientTest) TestGetLatest_GetLatestHeightError() {
 	ic.getRpcResponses()
 
-	req := rStructs.LatestDataRequest{
+	req := structs.LatestDataRequest{
 		LastHeight: uint64(ic.Height[0]),
 	}
 
@@ -457,7 +463,7 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 	ic.getRpcResponses()
 	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&ic.Decoded, nil)
 
-	req := rStructs.HeightRange{
+	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
 		EndHeight:   uint64(ic.Height[1]),
 	}
@@ -553,7 +559,7 @@ func (ic *IndexerClientTest) TestGetTransactions_DecodeDataError() {
 	e := errors.New("new decode error")
 	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&decodepb.DecodeResponse{}, e)
 
-	req := rStructs.HeightRange{
+	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
 		EndHeight:   uint64(ic.Height[1]),
 	}
@@ -595,7 +601,7 @@ func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 
 	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&ic.Decoded, nil)
 
-	req := rStructs.HeightRange{
+	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
 		EndHeight:   uint64(ic.Height[0]),
 	}
@@ -723,4 +729,39 @@ func (m proxyClientMock) GetTransactionsByHeight(ctx context.Context, height uin
 func (m proxyClientMock) DecodeData(ctx context.Context, ddr wStructs.DecodeDataRequest, height uint64) (*decodepb.DecodeResponse, error) {
 	args := m.Called(ctx, ddr, height)
 	return args.Get(0).(*decodepb.DecodeResponse), args.Error(1)
+}
+
+type dataStoreMock struct {
+	mock.Mock
+
+	searchStore searchStoreMock
+}
+
+func (m dataStoreMock) GetRewardsSession(ctx context.Context) (store.RewardStore, error) {
+	args := m.Called(ctx)
+	return nil, args.Error(1)
+}
+
+func (m dataStoreMock) GetSearchSession(ctx context.Context) (store.SearchStore, error) {
+	args := m.Called(ctx)
+	return m.searchStore, args.Error(1)
+}
+
+type searchStoreMock struct {
+	mock.Mock
+}
+
+func (m searchStoreMock) StoreTransactions(ctx context.Context, txs []structs.TransactionWithMeta) error {
+	args := m.Called(ctx, txs)
+	return args.Error(0)
+}
+
+func (m searchStoreMock) StoreBlocks(ctx context.Context, blocks []structs.BlockWithMeta) error {
+	args := m.Called(ctx, blocks)
+	return args.Error(0)
+}
+
+func (m searchStoreMock) ConfirmHeights(ctx context.Context, heights []structs.BlockWithMeta) error {
+	args := m.Called(ctx, heights)
+	return args.Error(0)
 }

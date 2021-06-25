@@ -7,7 +7,7 @@ import (
 	"github.com/figment-networks/polkadot-worker/mapper"
 	"github.com/figment-networks/polkadot-worker/utils"
 
-	"github.com/figment-networks/indexer-search/structs"
+	"github.com/figment-networks/indexing-engine/structs"
 	"github.com/figment-networks/polkadothub-proxy/grpc/decode/decodepb"
 
 	"github.com/stretchr/testify/suite"

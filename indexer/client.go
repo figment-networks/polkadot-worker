@@ -15,10 +15,10 @@ import (
 
 	rStructs "github.com/figment-networks/indexer-manager/structs"
 	cStructs "github.com/figment-networks/indexer-manager/worker/connectivity/structs"
-	"github.com/figment-networks/indexer-search/common/process/ranged"
-	searchHTTP "github.com/figment-networks/indexer-search/common/store/transport/http"
-	"github.com/figment-networks/indexer-search/structs"
 	"github.com/figment-networks/indexing-engine/metrics"
+	"github.com/figment-networks/indexing-engine/structs"
+	"github.com/figment-networks/indexing-engine/worker/process/ranged"
+	searchHTTP "github.com/figment-networks/indexing-engine/worker/store/transport/http"
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
@@ -173,7 +173,7 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 				c.GetAccountBalance(ctxWithTimeout, taskRequest, stream)
 			case rStructs.ReqIDGetTransactions:
 				c.GetTransactions(ctxWithTimeout, taskRequest, stream)
-			case rStructs.ReqIDLatestData:
+			case rStructs.ReqIDGetLatestMark:
 				c.GetLatestMark(ctxWithTimeout, taskRequest, stream)
 			default:
 				stream.Send(cStructs.TaskResponse{
@@ -231,11 +231,11 @@ func (c *Client) GetAccountBalance(ctx context.Context, tr cStructs.TaskRequest,
 	tResp.Payload, err = json.Marshal(balanceSummary)
 
 	if err != nil {
-		c.log.Error("[CELO-CLIENT] Error encoding payload data", zap.Error(err))
+		c.log.Error("[POLKADOT-CLIENT] Error encoding payload data", zap.Error(err))
 	}
 
 	if err := stream.Send(tResp); err != nil {
-		c.log.Error("[CELO-CLIENT] Error sending end", zap.Error(err))
+		c.log.Error("[POLKADOT-CLIENT] Error sending end", zap.Error(err))
 	}
 }
 
@@ -253,7 +253,7 @@ func (c *Client) GetLatestMark(ctx context.Context, tr cStructs.TaskRequest, str
 	timer := metrics.NewTimer(getLatestDuration)
 	defer timer.ObserveDuration()
 
-	ldr := &rStructs.LatestDataRequest{}
+	ldr := &structs.LatestDataRequest{}
 	err := json.Unmarshal(tr.Payload, ldr)
 	if err != nil {
 		stream.Send(cStructs.TaskResponse{Id: tr.Id, Error: cStructs.TaskError{Msg: "Cannot unmarshal payload"}, Final: true})
@@ -284,26 +284,26 @@ func (c *Client) GetLatestMark(ctx context.Context, tr cStructs.TaskRequest, str
 	}
 
 	tResp := cStructs.TaskResponse{Id: tr.Id, Type: "LatestMark", Order: 0, Final: true}
-	tResp.Payload, err = json.Marshal(rStructs.LatestDataResponse{
+	tResp.Payload, err = json.Marshal(structs.LatestDataResponse{
 		LastHash:   block.Block.BlockHash,
 		LastHeight: uint64(block.Block.Header.Height),
 		LastTime:   block.Block.Header.Time.AsTime(),
 	})
 
 	if err != nil {
-		c.log.Error("[CELO-CLIENT] Error encoding payload data", zap.Error(err))
+		c.log.Error("[POLKADOT-CLIENT] Error encoding payload data", zap.Error(err))
 	}
 
 	if err := stream.Send(tResp); err != nil {
-		c.log.Error("[CELO-CLIENT] Error sending end", zap.Error(err))
+		c.log.Error("[POLKADOT-CLIENT] Error sending end", zap.Error(err))
 	}
 }
 
-func (c *Client) getLatestBlockHeightRange(ctx context.Context, lastHeight, lastHeightFromProxy uint64) rStructs.HeightRange {
+func (c *Client) getLatestBlockHeightRange(ctx context.Context, lastHeight, lastHeightFromProxy uint64) structs.HeightRange {
 	if lastHeight == 0 {
 		startheight := lastHeightFromProxy - c.maxHeightsToGet
 		if startheight > 0 {
-			return rStructs.HeightRange{
+			return structs.HeightRange{
 				StartHeight: startheight,
 				EndHeight:   lastHeightFromProxy,
 			}
@@ -311,13 +311,13 @@ func (c *Client) getLatestBlockHeightRange(ctx context.Context, lastHeight, last
 	}
 
 	if c.maxHeightsToGet < lastHeightFromProxy-lastHeight {
-		return rStructs.HeightRange{
+		return structs.HeightRange{
 			StartHeight: lastHeightFromProxy - c.maxHeightsToGet,
 			EndHeight:   lastHeightFromProxy,
 		}
 	}
 
-	return rStructs.HeightRange{
+	return structs.HeightRange{
 		StartHeight: lastHeight,
 		EndHeight:   lastHeightFromProxy,
 	}
@@ -328,7 +328,7 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 	timer := metrics.NewTimer(getTransactionDuration)
 	defer timer.ObserveDuration()
 
-	var hr rStructs.HeightRange
+	var hr structs.HeightRange
 	var err error
 
 	if err = json.Unmarshal(tr.Payload, &hr); hr.StartHeight == 0 || hr.EndHeight == 0 {
@@ -359,7 +359,7 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 		return
 	}
 
-	c.log.Debug("[CELO-CLIENT] Getting Range", zap.Stringer("taskID", tr.Id), zap.Uint64("start", hr.StartHeight), zap.Uint64("end", hr.EndHeight))
+	c.log.Debug("[POLKADOT-CLIENT] Getting Range", zap.Stringer("taskID", tr.Id), zap.Uint64("start", hr.StartHeight), zap.Uint64("end", hr.EndHeight))
 
 	heights, err := c.Reqester.GetRange(ctx, hr)
 	resp := &cStructs.TaskResponse{
@@ -373,29 +373,29 @@ func (c *Client) GetTransactions(ctx context.Context, tr cStructs.TaskRequest, s
 
 	if err != nil {
 		resp.Error = cStructs.TaskError{Msg: err.Error()}
-		c.log.Error("[CELO-CLIENT] Error getting range (Get Transactions) ", zap.Error(err), zap.Stringer("taskID", tr.Id))
+		c.log.Error("[POLKADOT-CLIENT] Error getting range (Get Transactions) ", zap.Error(err), zap.Stringer("taskID", tr.Id))
 		if err := stream.Send(*resp); err != nil {
-			c.log.Error("[CELO-CLIENT] Error sending message (Get Transactions) ", zap.Error(err), zap.Stringer("taskID", tr.Id))
+			c.log.Error("[POLKADOT-CLIENT] Error sending message (Get Transactions) ", zap.Error(err), zap.Stringer("taskID", tr.Id))
 		}
 		return
 	}
 	if err := stream.Send(*resp); err != nil {
-		c.log.Error("[CELO-CLIENT] Error sending message (Get Transactions) ", zap.Error(err), zap.Stringer("taskID", tr.Id))
+		c.log.Error("[POLKADOT-CLIENT] Error sending message (Get Transactions) ", zap.Error(err), zap.Stringer("taskID", tr.Id))
 	}
-	c.log.Debug("[CELO-CLIENT] Finished sending all", zap.Stringer("taskID", tr.Id), zap.Any("heights", hr))
+	c.log.Debug("[POLKADOT-CLIENT] Finished sending all", zap.Stringer("taskID", tr.Id), zap.Any("heights", hr))
 }
 
 func (c *Client) BlockAndTx(ctx context.Context, height uint64) (blockWM structs.BlockWithMeta, txsWM []structs.TransactionWithMeta, err error) {
 	defer c.log.Sync()
-	c.log.Debug("[CELO-CLIENT] Getting height", zap.Uint64("block", height))
+	c.log.Debug("[POLKADOT-CLIENT] Getting height", zap.Uint64("block", height))
 
 	blockWM, txsWM, err = c.blockAndTx(ctx, height)
 	if err != nil {
-		c.log.Error("[CELO-CLIENT] Error while getting block and transactions", zap.Uint64("block", height), zap.Error(err), zap.Uint64("txs", blockWM.Block.NumberOfTransactions))
+		c.log.Error("[POLKADOT-CLIENT] Error while getting block and transactions", zap.Uint64("block", height), zap.Error(err), zap.Uint64("txs", blockWM.Block.NumberOfTransactions))
 		return structs.BlockWithMeta{}, nil, fmt.Errorf("error fetching block and transactions: %d %w ", uint64(height), err)
 	}
 
-	hSess, err := c.searchStore.GetSession(ctx)
+	hSess, err := c.searchStore.GetSearchSession(ctx)
 	if err != nil {
 		return structs.BlockWithMeta{}, nil, fmt.Errorf("Error while getting store session: %s", err.Error())
 	}
