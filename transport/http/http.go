@@ -10,6 +10,7 @@ import (
 
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/polkadot-worker/api/scale"
+
 	"go.uber.org/zap"
 )
 
