@@ -7,13 +7,13 @@ require (
 	github.com/bearcherian/rollzap v1.0.2
 	github.com/btcsuite/btcutil v1.0.2
 	github.com/figment-networks/indexer-manager v0.4.1
-	github.com/figment-networks/indexing-engine v0.4.2
-	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210611093355-11674e902e52
+	github.com/figment-networks/indexing-engine v0.4.4
+	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210628100359-11679744ad61
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/hashicorp/golang-lru v0.5.4
-	github.com/itering/scale.go v1.0.44
+	github.com/itering/scale.go v1.0.59
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/lib/pq v1.10.2
 	github.com/pkg/errors v0.9.1

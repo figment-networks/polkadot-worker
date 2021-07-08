@@ -19,7 +19,6 @@ import (
 	"github.com/figment-networks/polkadot-worker/indexer"
 
 	"github.com/figment-networks/indexing-engine/structs"
-	"github.com/figment-networks/indexing-engine/worker/store/params"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
@@ -104,7 +103,7 @@ func getTransaction(ctx context.Context, zLog *zap.Logger, c *indexer.Client, db
 	rows, err := db.QueryContext(ctx, "SELECT id, height, hash, data FROM public.transaction_events WHERE network = $1 AND chain_id = $2 AND height = $3  ORDER BY height ASC", []interface{}{network, chain, height}...)
 	switch {
 	case err == sql.ErrNoRows:
-		return params.ErrNotFound
+		return sql.ErrNoRows
 	case err != nil:
 		return fmt.Errorf("query error: %w", err)
 	default:
