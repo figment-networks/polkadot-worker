@@ -113,8 +113,8 @@ github.com/figment-networks/indexer-manager v0.3.7/go.mod h1:98qZshG+/SFvub//aA4
 github.com/figment-networks/indexing-engine v0.2.1/go.mod h1:PxX1SoEGUoCkno1I3aDj1tynP1ySQomEkuzOZFIVHkI=
 github.com/figment-networks/indexing-engine v0.3.1 h1:+qSpI/Y/shllnyfKS99ehv+DathwQ9im9ZcqmRejtDY=
 github.com/figment-networks/indexing-engine v0.3.1/go.mod h1:UFL9NtFKENN+YAvfZFwd7OqGk8JZHRxgjZkAbhjulME=
-github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210628100359-11679744ad61 h1:W9XpTbjqOUXF7b5PzZp2+XK9rv2fUr6w/vvkVInXafQ=
-github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210628100359-11679744ad61/go.mod h1:DRLHiHWdqk5Jdjl5FsEE4zwQuhcTbW2meUvJWYInJWg=
+github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210708193720-bc93a36552c9 h1:ZOPT0PQAe2Yw1tDpWuun4FUVjFGREQrGmr/kgboO008=
+github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210708193720-bc93a36552c9/go.mod h1:DRLHiHWdqk5Jdjl5FsEE4zwQuhcTbW2meUvJWYInJWg=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/fsnotify/fsnotify v1.4.9/go.mod h1:znqG4EE+3YCdAaPaxE2ZRY/06pZUdp0tY4IgpuI1SZQ=
 github.com/fsouza/fake-gcs-server v1.17.0/go.mod h1:D1rTE4YCyHFNa99oyJJ5HyclvN/0uQR+pM/VdlL83bw=
@@ -217,8 +217,8 @@ github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpO
 github.com/huandu/xstrings v1.3.1 h1:4jgBlKK6tLKFvO8u5pmYjG91cqytmDCDvGh7ECVFfFs=
 github.com/huandu/xstrings v1.3.1/go.mod h1:y5/lhBue+AyNmUVz9RLU9xbLR0o4KIIExikq4ovT0aE=
 github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
-github.com/itering/scale.go v1.0.55 h1:71NploCcwfkpQIe+go/qEjp0JhGoiItp9LcQr6Ksfgo=
-github.com/itering/scale.go v1.0.55/go.mod h1:Eg8T/07SKybkN9E1LmiEdSN/pLtV4rZDN9zuj486Gbs=
+github.com/itering/scale.go v1.0.59 h1:gazB+JYBeXVfWA6Pjkh/df0wNqA1uxosEnIJQZqNGlU=
+github.com/itering/scale.go v1.0.59/go.mod h1:Eg8T/07SKybkN9E1LmiEdSN/pLtV4rZDN9zuj486Gbs=
 github.com/jackc/chunkreader v1.0.0/go.mod h1:RT6O25fNZIuasFJRyZ4R/Y2BbhasbmZXF9QQ7T3kePo=
 github.com/jackc/chunkreader/v2 v2.0.0/go.mod h1:odVSm741yZoC3dpHEUXIqA9tQRhFrgOHwnPIn9lDKlk=
 github.com/jackc/chunkreader/v2 v2.0.1/go.mod h1:odVSm741yZoC3dpHEUXIqA9tQRhFrgOHwnPIn9lDKlk=

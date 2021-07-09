@@ -151,7 +151,6 @@ func (ds *DecodeStorage) GetExtrinsic(extrinsicRaw string, metadata *types.Metad
 		CallIndex:           e.CallIndex,
 		Tip:                 e.Tip,
 		CallModule:          e.CallModule,
-		Call:                e.Call,
 		Params:              e.Params,
 	}, err
 }
