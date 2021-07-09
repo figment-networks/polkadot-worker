@@ -259,9 +259,6 @@ func (c *Client) GetLatestMark(ctx context.Context, tr cStructs.TaskRequest, str
 		stream.Send(cStructs.TaskResponse{Id: tr.Id, Error: cStructs.TaskError{Msg: "Cannot unmarshal payload"}, Final: true})
 	}
 
-	sCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-
 	ch := c.gbPool.Get()
 	height, err := getLatestHeight(c.serverConn, c.Cache, ch)
 	if err != nil {
@@ -273,21 +270,9 @@ func (c *Client) GetLatestMark(ctx context.Context, tr cStructs.TaskRequest, str
 		return
 	}
 
-	block, err := c.proxy.GetBlockByHeight(sCtx, height)
-	if err != nil {
-		stream.Send(cStructs.TaskResponse{
-			Id:    tr.Id,
-			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch block from proxy: %s", err.Error())},
-			Final: true,
-		})
-		return
-	}
-
 	tResp := cStructs.TaskResponse{Id: tr.Id, Type: "LatestMark", Order: 0, Final: true}
 	tResp.Payload, err = json.Marshal(structs.LatestDataResponse{
-		LastHash:   block.Block.BlockHash,
-		LastHeight: uint64(block.Block.Header.Height),
-		LastTime:   block.Block.Header.Time.AsTime(),
+		LastHeight: height,
 	})
 
 	if err != nil {
