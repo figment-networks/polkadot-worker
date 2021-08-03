@@ -49,9 +49,9 @@ type IndexerClientTest struct {
 	Decoded      decodepb.DecodeResponse
 	Transactions transactions
 
-	DataStoreMock dataStoreMock
-	PolkaMock     PolkaClientMock
-	ProxyClient   *proxyClientMock
+	HTTPStoreMock httpStoreMock
+	PolkaMock     polkaClientMock
+	ProxyClient   proxyClientMock
 }
 
 func (ic *IndexerClientTest) SetupTest() {
@@ -69,25 +69,22 @@ func (ic *IndexerClientTest) SetupTest() {
 	log, err := zap.NewDevelopment()
 	ic.Require().Nil(err)
 
-	proxyClientMock := proxyClientMock{}
-
 	ctx, ctxCancel := context.WithCancel(context.Background())
 	ic.Ctx = ctx
 	ic.CtxCancel = ctxCancel
 
-	dataStoreMock := dataStoreMock{
+	ic.HTTPStoreMock = httpStoreMock{
 		searchStore: searchStoreMock{},
 	}
-	ic.DataStoreMock = dataStoreMock
-	ic.PolkaMock = PolkaClientMock{}
+	ic.PolkaMock = polkaClientMock{}
+	ic.ProxyClient = proxyClientMock{}
 
 	ds := scale.NewDecodeStorage()
 	if err := ds.Init("polkadot"); err != nil {
 		log.Fatal("Error creating decode storage", zap.Error(err))
 	}
 
-	ic.Client = indexer.NewClient(log, &proxyClientMock, ds, &dataStoreMock, &ic.PolkaMock, ic.Exp, 1000, ic.ChainID, ic.Currency, ic.Network)
-	ic.ProxyClient = &proxyClientMock
+	ic.Client = indexer.NewClient(log, &ic.ProxyClient, ds, &ic.HTTPStoreMock, &ic.PolkaMock, ic.Exp, 1000, ic.ChainID, ic.Currency, ic.Network)
 }
 
 func (ic *IndexerClientTest) TestGetAccountBalance_OK() {
@@ -129,14 +126,12 @@ func (ic *IndexerClientTest) TestGetAccountBalance_OK() {
 
 	ic.Require().Nil(stream.Req(tr))
 
-	accountBalance, endFounded := false, false
 	for s := range stream.ResponseListener {
 		if ic.ReqID.String() != s.Id.String() {
 			continue
 		}
 
-		switch s.Type {
-		case "AccountBalance":
+		if s.Type == "AccountBalance" {
 			var resp structs.GetAccountBalanceResponse
 			err := json.Unmarshal(s.Payload, &resp)
 			ic.Require().Nil(err)
@@ -149,15 +144,8 @@ func (ic *IndexerClientTest) TestGetAccountBalance_OK() {
 			ic.Require().Equal(ic.Currency, balance.Currency)
 			ic.Require().Equal("0.0000001234DOT", balance.Text)
 			ic.Require().Equal("1234", balance.Numeric.String())
-
-			accountBalance = true
-		case "END":
 			ic.Require().True(s.Final)
-			endFounded = true
-		}
-
-		if accountBalance && endFounded {
-			break
+			return
 		}
 	}
 }
@@ -282,24 +270,14 @@ func (ic *IndexerClientTest) TestGetAccountBalance_UnmarshalError() {
 	}
 }
 
-func (ic *IndexerClientTest) TestGetLatest_OK() {
+func (ic *IndexerClientTest) TestGetLatestMark_OK() {
 	ic.getLatestRpcResponses()
-	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&ic.Decoded, nil)
-
-	req := structs.LatestDataRequest{
-		LastHeight: ic.Height[0],
-	}
-
-	var buffer bytes.Buffer
-	err := json.NewEncoder(&buffer).Encode(req)
-	ic.Require().Nil(err)
 
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    rStructs.ReqIDLatestData,
-		Payload: make([]byte, buffer.Len()),
+		Type:    rStructs.ReqIDGetLatestMark,
+		Payload: nil,
 	}
-	buffer.Read(tr.Payload)
 
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
@@ -310,130 +288,29 @@ func (ic *IndexerClientTest) TestGetLatest_OK() {
 
 	ic.Require().Nil(stream.Req(tr))
 
-	transactions := ic.Transactions.Transactions
-
-	countBlock, countTransaction, endFounded := 0, 0, false
 	for s := range stream.ResponseListener {
 		if s.Id.String() != ic.ReqID.String() {
 			continue
 		}
 
-		switch s.Type {
-		case "Block":
-			var block structs.Block
-			ic.Require().Nil(json.Unmarshal(s.Payload, &block))
-			ic.validateBlock(block, ic.Block)
-			countBlock++
-
-		case "Transaction":
-			var transaction structs.Transaction
-			ic.Require().Nil(json.Unmarshal(s.Payload, &transaction))
-
-			switch transaction.Hash {
-			case transactions[0].Hash:
-				utils.ValidateTransactions(&ic.Suite, transaction, transactions[0])
-			case transactions[1].Hash:
-				utils.ValidateTransactions(&ic.Suite, transaction, transactions[1])
-			}
-
-			countTransaction++
-
-		case "END":
+		if s.Type == "LatestMark" {
+			var ldr structs.LatestDataResponse
+			ic.Require().Nil(json.Unmarshal(s.Payload, &ldr))
+			ic.Require().Equal(ic.Height[0], ldr.LastHeight)
 			ic.Require().True(s.Final)
-			endFounded = true
+			return
 		}
-
-		if countBlock == 1 && countTransaction == 2 && endFounded {
-			break
-		}
-	}
-}
-
-func (ic *IndexerClientTest) TestGetLatest_LatestDataRequestUnmarshalError() {
-	ic.getLatestRpcResponses()
-	tr := cStructs.TaskRequest{
-		Id:      ic.ReqID,
-		Type:    rStructs.ReqIDLatestData,
-		Payload: make([]byte, 0),
-	}
-
-	stream := cStructs.NewStreamAccess()
-	defer stream.Close()
-
-	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
-	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
-	defer ic.CtxCancel()
-
-	ic.Require().Nil(stream.Req(tr))
-
-	for response := range stream.ResponseListener {
-		if response.Id.String() != ic.ReqID.String() || response.Error.Msg == "" {
-			continue
-		}
-
-		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Cannot unmarshal payload: bad request")
-		return
-	}
-}
-
-func (ic *IndexerClientTest) TestGetLatest_DecodeDataError() {
-	ic.getLatestRpcResponses()
-	e := errors.New("new decode error")
-	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&decodepb.DecodeResponse{}, e)
-
-	req := structs.LatestDataRequest{
-		LastHeight: uint64(ic.Height[0]),
-	}
-
-	var buffer bytes.Buffer
-	err := json.NewEncoder(&buffer).Encode(req)
-	ic.Require().Nil(err)
-
-	tr := cStructs.TaskRequest{
-		Id:      ic.ReqID,
-		Type:    rStructs.ReqIDLatestData,
-		Payload: make([]byte, buffer.Len()),
-	}
-	buffer.Read(tr.Payload)
-
-	stream := cStructs.NewStreamAccess()
-	defer stream.Close()
-
-	ic.Require().Nil(ic.RegisterStream(ic.Ctx, stream))
-	defer ic.Require().Nil(ic.CloseStream(ic.Ctx, stream.StreamID))
-	defer ic.CtxCancel()
-
-	ic.Require().Nil(stream.Req(tr))
-
-	for response := range stream.ResponseListener {
-		if response.Id.String() != ic.ReqID.String() || response.Error.Msg == "" {
-			continue
-		}
-
-		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "error while decoding data: new decode error")
-		return
 	}
 }
 
 func (ic *IndexerClientTest) TestGetLatest_GetLatestHeightError() {
 	ic.getRpcResponses()
 
-	req := structs.LatestDataRequest{
-		LastHeight: uint64(ic.Height[0]),
-	}
-
-	var buffer bytes.Buffer
-	err := json.NewEncoder(&buffer).Encode(req)
-	ic.Require().Nil(err)
-
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
-		Type:    rStructs.ReqIDLatestData,
-		Payload: make([]byte, buffer.Len()),
+		Type:    rStructs.ReqIDGetLatestMark,
+		Payload: nil,
 	}
-	buffer.Read(tr.Payload)
 
 	stream := cStructs.NewStreamAccess()
 	defer stream.Close()
@@ -450,18 +327,37 @@ func (ic *IndexerClientTest) TestGetLatest_GetLatestHeightError() {
 		}
 
 		ic.Require().True(response.Final)
-		ic.Require().Contains(response.Error.Msg, "Could not fetch head from proxy: json: cannot unmarshal string into Go value of type scale.BlockHeader")
+		ic.Require().Contains(response.Error.Msg, "Could not fetch latest height from proxy: json: cannot unmarshal string into Go value of type scale.BlockHeader")
 		return
 	}
 }
 
 func (ic *IndexerClientTest) TestGetTransactions_OK() {
 	var buffer bytes.Buffer
-	var block structs.Block
-	var transaction structs.Transaction
 
 	ic.getRpcResponses()
-	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&ic.Decoded, nil)
+
+	blockWithMeta := []structs.BlockWithMeta{{
+		Network: ic.Network,
+		ChainID: ic.ChainID,
+		Version: ic.Version,
+		Block:   ic.Block,
+	}}
+
+	transactionWithMeta := make([]structs.TransactionWithMeta, len(ic.Transactions.Transactions))
+	for i, tx := range ic.Transactions.Transactions {
+		transactionWithMeta[i] = structs.TransactionWithMeta{
+			Network:     ic.Network,
+			ChainID:     ic.ChainID,
+			Version:     ic.Version,
+			Transaction: tx,
+		}
+	}
+
+	ic.HTTPStoreMock.On("GetSearchSession", mock.AnythingOfType("*context.timerCtx")).Return(&ic.HTTPStoreMock.searchStore, nil)
+	ic.HTTPStoreMock.searchStore.On("StoreBlocks", mock.AnythingOfType("*context.timerCtx"), blockWithMeta).Return(nil)
+	ic.HTTPStoreMock.searchStore.On("StoreTransactions", mock.AnythingOfType("*context.timerCtx"), transactionWithMeta).Return(nil)
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.timerCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&ic.Decoded, nil)
 
 	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
@@ -486,42 +382,17 @@ func (ic *IndexerClientTest) TestGetTransactions_OK() {
 
 	ic.Require().Nil(stream.Req(tr))
 
-	transactions := ic.Transactions.Transactions
-
-	countBlock, countTransaction, endFounded := 0, 0, false
 	for s := range stream.ResponseListener {
 		if ic.ReqID != s.Id {
 			continue
 		}
 
-		switch s.Type {
-		case "Block":
+		if s.Type == "Heights" {
+			var heights structs.Heights
 
-			ic.Require().Nil(json.Unmarshal(s.Payload, &block))
-			ic.validateBlock(block, ic.Block)
-
-			countBlock++
-
-		case "Transaction":
-
-			ic.Require().Nil(json.Unmarshal(s.Payload, &transaction))
-
-			switch transaction.Hash {
-			case transactions[0].Hash:
-				utils.ValidateTransactions(&ic.Suite, transaction, transactions[0])
-			case transactions[1].Hash:
-				utils.ValidateTransactions(&ic.Suite, transaction, transactions[1])
-			}
-
-			countTransaction++
-
-		case "END":
-			ic.Require().True(s.Final)
-			endFounded = true
-		}
-
-		if countBlock == 1 && countTransaction == 2 && endFounded {
-			break
+			ic.Require().Nil(json.Unmarshal(s.Payload, &heights))
+			ic.Require().Nil(heights.ErrorAt)
+			return
 		}
 	}
 }
@@ -530,7 +401,7 @@ func (ic *IndexerClientTest) TestGetTransactions_HeightRangeUnmarshalError() {
 	tr := cStructs.TaskRequest{
 		Id:      ic.ReqID,
 		Type:    rStructs.ReqIDGetTransactions,
-		Payload: make([]byte, 0),
+		Payload: nil,
 	}
 
 	stream := cStructs.NewStreamAccess()
@@ -557,7 +428,7 @@ func (ic *IndexerClientTest) TestGetTransactions_DecodeDataError() {
 	ic.getRpcResponses()
 
 	e := errors.New("new decode error")
-	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&decodepb.DecodeResponse{}, e)
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.timerCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&decodepb.DecodeResponse{}, e)
 
 	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
@@ -599,7 +470,7 @@ func (ic *IndexerClientTest) TestGetTransactions_TransactionMapperError() {
 	ic.getRpcResponses()
 	ic.Decoded.Block.Block.Extrinsics[0].PartialFee = "bad"
 
-	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.cancelCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&ic.Decoded, nil)
+	ic.ProxyClient.On("DecodeData", mock.AnythingOfType("*context.timerCtx"), mock.AnythingOfType("structs.DecodeDataRequest"), ic.Height[0]).Return(&ic.Decoded, nil)
 
 	req := structs.HeightRange{
 		StartHeight: uint64(ic.Height[0]),
@@ -645,13 +516,13 @@ type transactions struct {
 	Transactions []structs.Transaction
 }
 
-type PolkaClientMock struct {
+type polkaClientMock struct {
 	rpcResp rpcResponses
 	lock    sync.Mutex
 	rCount  int
 }
 
-func (pcm *PolkaClientMock) Send(resp chan api.Response, id uint64, method string, params []interface{}) error {
+func (pcm *polkaClientMock) Send(resp chan api.Response, id uint64, method string, params []interface{}) error {
 	pcm.lock.Lock()
 
 	response := pcm.rpcResp.Responses[pcm.rCount]
@@ -731,20 +602,20 @@ func (m proxyClientMock) DecodeData(ctx context.Context, ddr wStructs.DecodeData
 	return args.Get(0).(*decodepb.DecodeResponse), args.Error(1)
 }
 
-type dataStoreMock struct {
+type httpStoreMock struct {
 	mock.Mock
 
 	searchStore searchStoreMock
 }
 
-func (m dataStoreMock) GetRewardsSession(ctx context.Context) (store.RewardStore, error) {
+func (m httpStoreMock) GetRewardsSession(ctx context.Context) (store.RewardStore, error) {
 	args := m.Called(ctx)
 	return nil, args.Error(1)
 }
 
-func (m dataStoreMock) GetSearchSession(ctx context.Context) (store.SearchStore, error) {
+func (m httpStoreMock) GetSearchSession(ctx context.Context) (store.SearchStore, error) {
 	args := m.Called(ctx)
-	return m.searchStore, args.Error(1)
+	return args.Get(0).(store.SearchStore), args.Error(1)
 }
 
 type searchStoreMock struct {

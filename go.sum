@@ -46,8 +46,8 @@ github.com/erikstmartin/go-testdb v0.0.0-20160219214506-8d10e4a1bae5/go.mod h1:a
 github.com/figment-networks/indexer-manager v0.4.1 h1:K3U1g1hH5bAd7q48aVr4p6o6cd0TGJ/md0SXYdp7fvE=
 github.com/figment-networks/indexer-manager v0.4.1/go.mod h1:UKCL59uzNRAzfVWGNWMtLEsqvMOqQFAXcz/DZxi5fhw=
 github.com/figment-networks/indexing-engine v0.3.2-0.20210603103553-9df604641a66/go.mod h1:UFL9NtFKENN+YAvfZFwd7OqGk8JZHRxgjZkAbhjulME=
-github.com/figment-networks/indexing-engine v0.4.4 h1:G7nTaRAH3/oc7Z/N6rkzQi47CzV0bNrMTsURnJMm4Sg=
-github.com/figment-networks/indexing-engine v0.4.4/go.mod h1:c8uqoruz/wIqh+obBG2QYRm2XLv01AdyoYXPz05yCS0=
+github.com/figment-networks/indexing-engine v0.5.0 h1:VDPD8MvQHaMFILw/4r4p6PsUeDC9jUZrzWZF/2t9hNM=
+github.com/figment-networks/indexing-engine v0.5.0/go.mod h1:c8uqoruz/wIqh+obBG2QYRm2XLv01AdyoYXPz05yCS0=
 github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210628100359-11679744ad61 h1:W9XpTbjqOUXF7b5PzZp2+XK9rv2fUr6w/vvkVInXafQ=
 github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210628100359-11679744ad61/go.mod h1:DRLHiHWdqk5Jdjl5FsEE4zwQuhcTbW2meUvJWYInJWg=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=

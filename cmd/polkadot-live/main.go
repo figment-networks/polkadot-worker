@@ -76,7 +76,8 @@ func main() {
 		logger.Error(err)
 	}
 
-	connApi := api.NewConn(logger.GetLogger())
+	log := logger.GetLogger()
+	connApi := api.NewConn(log)
 	polkaNodes := strings.Split(cfg.PolkadotNodeAddrs, ",")
 	for _, address := range polkaNodes {
 		go connApi.Run(ctx, address, time.Second*30)
@@ -92,8 +93,8 @@ func main() {
 		log.Fatal("Error creating decode storage", zap.Error(err))
 	}
 
-	client := indexer.NewClient(logger.GetLogger(), nil, ds, nil, connApi, 0, 0, "", "", "")
-	connector := thttp.NewConnector(client, logger.GetLogger())
+	client := indexer.NewClient(log, nil, ds, nil, connApi, 0, 0, "", "", "")
+	connector := thttp.NewConnector(client, log)
 
 	mux := http.NewServeMux()
 

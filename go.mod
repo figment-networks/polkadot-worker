@@ -7,7 +7,7 @@ require (
 	github.com/bearcherian/rollzap v1.0.2
 	github.com/btcsuite/btcutil v1.0.2
 	github.com/figment-networks/indexer-manager v0.4.1
-	github.com/figment-networks/indexing-engine v0.4.4
+	github.com/figment-networks/indexing-engine v0.5.0
 	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210628100359-11679744ad61
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/uuid v1.2.0
