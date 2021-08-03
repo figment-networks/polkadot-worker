@@ -5,7 +5,7 @@
 		"block_hash": "0xcfca35582d9402d3dd88c228ef98947d8ca2066e5258df97ed30460d3e68556c",
 		"height": 5400570,
 		"epoch": "370",
-		"chain_id": "polkadot",
+		"chain_id": "mainnet",
 		"time": "2021-06-07T11:27:48.000000001+02:00",
 		"version": "0.0.1",
 		"events": [
@@ -44,7 +44,7 @@
 		"block_hash": "0xcfca35582d9402d3dd88c228ef98947d8ca2066e5258df97ed30460d3e68556c",
 		"height": 5400570,
 		"epoch": "370",
-		"chain_id": "polkadot",
+		"chain_id": "mainnet",
 		"time": "2021-06-07T11:27:48.000000001+02:00",
 		"transaction_fee": [
 			{

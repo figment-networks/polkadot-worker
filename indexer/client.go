@@ -18,7 +18,7 @@ import (
 	"github.com/figment-networks/indexing-engine/metrics"
 	"github.com/figment-networks/indexing-engine/structs"
 	"github.com/figment-networks/indexing-engine/worker/process/ranged"
-	searchHTTP "github.com/figment-networks/indexing-engine/worker/store/transport/http"
+	"github.com/figment-networks/indexing-engine/worker/store"
 	"github.com/figment-networks/polkadothub-proxy/grpc/account/accountpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/block/blockpb"
 	"github.com/figment-networks/polkadothub-proxy/grpc/chain/chainpb"
@@ -81,16 +81,16 @@ type Client struct {
 	sLock   sync.Mutex
 	streams map[uuid.UUID]*cStructs.StreamAccess
 
-	ds          *scale.DecodeStorage
-	Reqester    *ranged.RangeRequester
-	searchStore *searchHTTP.HTTPStore
+	ds        *scale.DecodeStorage
+	Reqester  *ranged.RangeRequester
+	httpStore store.StoreCaller
 
 	abMapper *mapper.AccountBalanceMapper
 	trMapper *mapper.TransactionMapper
 }
 
 // NewClient is a indexer-manager Client constructor
-func NewClient(log *zap.Logger, proxy ClientIface, ds *scale.DecodeStorage, ss *searchHTTP.HTTPStore, serverConn PolkaClient, exp int, maxHeightsToGet uint64, chainID, currency, network string) *Client {
+func NewClient(log *zap.Logger, proxy ClientIface, ds *scale.DecodeStorage, httpStore store.StoreCaller, serverConn PolkaClient, exp int, maxHeightsToGet uint64, chainID, currency, network string) *Client {
 	getAccountBalanceDuration = endpointDuration.WithLabels("getAccountBalance")
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
@@ -110,14 +110,14 @@ func NewClient(log *zap.Logger, proxy ClientIface, ds *scale.DecodeStorage, ss *
 		Cache: &ClientCache{
 			BlockHashCache: newLru,
 		},
-		ds:          ds,
-		searchStore: ss,
-		log:         log,
-		proxy:       proxy,
-		serverConn:  serverConn,
-		streams:     make(map[uuid.UUID]*cStructs.StreamAccess),
-		abMapper:    mapper.NewAccountBalanceMapper(exp, currency),
-		trMapper:    mapper.NewTransactionMapper(exp, log, chainID, currency),
+		ds:         ds,
+		httpStore:  httpStore,
+		log:        log,
+		proxy:      proxy,
+		serverConn: serverConn,
+		streams:    make(map[uuid.UUID]*cStructs.StreamAccess),
+		abMapper:   mapper.NewAccountBalanceMapper(exp, currency),
+		trMapper:   mapper.NewTransactionMapper(exp, log, chainID, currency),
 	}
 
 	ic.Reqester = ranged.NewRangeRequester(ic, 20)
@@ -253,12 +253,6 @@ func (c *Client) GetLatestMark(ctx context.Context, tr cStructs.TaskRequest, str
 	timer := metrics.NewTimer(getLatestDuration)
 	defer timer.ObserveDuration()
 
-	ldr := &structs.LatestDataRequest{}
-	err := json.Unmarshal(tr.Payload, ldr)
-	if err != nil {
-		stream.Send(cStructs.TaskResponse{Id: tr.Id, Error: cStructs.TaskError{Msg: "Cannot unmarshal payload"}, Final: true})
-	}
-
 	ch := c.gbPool.Get()
 	height, err := getLatestHeight(c.serverConn, c.Cache, ch)
 	if err != nil {
@@ -380,7 +374,7 @@ func (c *Client) BlockAndTx(ctx context.Context, height uint64) (blockWM structs
 		return structs.BlockWithMeta{}, nil, fmt.Errorf("error fetching block and transactions: %d %w ", uint64(height), err)
 	}
 
-	hSess, err := c.searchStore.GetSearchSession(ctx)
+	hSess, err := c.httpStore.GetSearchSession(ctx)
 	if err != nil {
 		return structs.BlockWithMeta{}, nil, fmt.Errorf("Error while getting store session: %s", err.Error())
 	}
