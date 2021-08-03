@@ -30,7 +30,7 @@ type TransactionMapperTest struct {
 }
 
 func (tm *TransactionMapperTest) SetupTest() {
-	tm.ChainID = "polkadot"
+	tm.ChainID = "mainnet"
 	tm.Currency = "DOT"
 	tm.Exp = 10
 	tm.Version = "0.0.1"
