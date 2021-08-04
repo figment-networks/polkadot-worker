@@ -142,3 +142,230 @@ utility:
 vesting:
 - `vestingupdated`
 - `vestingcompleted`
+
+# Extrinsic Types
+List of currently supporter extrinsic types in polkadot-worker are (listed by modules):
+
+authorship:
+- `setuncles`
+
+babe:
+- `planconfigchange`
+- `reportequivocation`
+- `reportequivocationunsigned`
+
+balances:
+- `forcetransfer`
+- `setbalance`
+- `transfer`
+- `transferall`
+- `transferkeepalive`
+
+bounties:
+- `acceptcurator`
+- `approvebounty`
+- `awardbounty`
+- `claimbounty`
+- `closebounty`
+- `extendbountyexpiry`
+- `proposecurator`
+- `unassigncurator`
+
+claims
+- `attest`
+- `claim`
+- `claimattest`
+- `mintclaim`
+- `moveclaim`
+
+council:
+- `close`
+- `disapproveproposal`
+- `execute`
+- `propose`
+- `setmembers`
+- `vote`
+
+democracy:
+- `blacklist`
+- `cancelproposal`
+- `cancelqueued`
+- `cancelreferendum`
+- `clearpublicproposals`
+- `delegate`
+- `emergencycancel`
+- `enactproposal`
+- `externalproposal`
+- `externalpropose`
+- `externalproposedefault`
+- `fasttrack`
+- `noteimminentpreimage`
+- `noteimminentpreimageoperational`
+- `notepreimage`
+- `notepreimageoperational`
+- `propose`
+- `reappreimage`
+- `removeothervote`
+- `removevote`
+- `second`
+- `undelegate`
+- `unlock`
+- `vetoexternal`
+- `vote`
+
+electionprovidermultiphase:
+- `setemergencyelectionresult`
+- `setminimumuntrustedsource`
+- `submitunsigned`
+
+grandpa:
+- `notestalled`
+- `reportequivocation`
+- `reportequivocationunsigned`
+
+
+identity:
+- `addregistrar`
+- `addsub`
+- `cancelrequest`
+- `clearidentity`
+- `killidentity`
+- `providejudgement`
+- `quitsub`
+- `removesub`
+- `renamesub`
+- `requestjudgement`
+- `setaccountid`
+- `setfee`
+- `setfields`
+- `setidentity`
+- `setsubs`
+
+indices:
+- `claim`
+- `forcetransfer`
+- `free`
+- `freeze`
+- `transfer`
+
+imonline:
+- `heartbeat`
+
+multisig:
+- `approveasmulti`
+- `asmulti`
+- `asmultithreshold1`
+- `cancelasmulti`
+
+phragmenelection:
+- `cleandefunctvoters`
+- `removemember`
+- `removevoter`
+- `renouncecandidacy`
+- `submitcandidacy`
+
+
+proxy:
+- `addproxy`
+- `announce`
+- `anonymous`
+- `killanonymous`
+- `proxy`
+- `proxyannounced`
+- `rejectannouncement`
+- `removeannouncement`
+- `removeproxies`
+- `removeproxy`
+
+scheduler:
+- `cancel`
+- `cancelnamed`
+- `schedule`
+- `scheduleafter`
+- `schedulenamed`
+- `schedulenamedafter`
+
+session:
+- `purgekeys`
+- `setkeys`
+
+staking:
+- `bond`
+- `bondextra`
+- `canceldeferredslash`
+- `chill`
+- `chillother`
+- `forcenewera`
+- `forceneweraalways`
+- `forcenoeras`
+- `forceunstake`
+- `increasevalidatorcount`
+- `kick`
+- `nominate`
+- `payoutstakers`
+- `reapstash`
+- `scalevalidatorcount`
+- `setcontroller`
+- `sethistorydepth`
+- `setinvulnerables`
+- `setvalidatorcount`
+- `unbond`
+- `updatestakinglimits`
+- `validate`
+- `withdrawunbonded`
+
+system:
+- `fillblock`
+- `killprefix`
+- `killstorage`
+- `remark`
+- `remarkwithevent`
+- `setchangestrieconfig`
+- `setcode`
+- `setcodewithoutchecks`
+- `setheappages`
+- `setstorage`
+
+technicalcommittee:
+- `close`
+- `disapproveproposal`
+- `execute`
+- `propose`
+- `setmembers`
+- `vote`
+
+technicalmembership:
+- `addmember`
+- `changekey`
+- `clearprime`
+- `removemember`
+- `resetmembers`
+- `setprime`
+- `swapmember`
+
+timestamp:
+- `set`
+
+tips:
+- `closetip`
+- `reportawesome`
+- `retracttip`
+- `slashtip`
+- `tip`
+- `tipnew`
+
+treasury:
+- `approveproposal`
+- `proposespend`
+- `rejectproposal`
+
+utility:
+- `asderivative`
+- `batch`
+- `batchall`
+
+vesting:
+- `forcevestedtransfer`
+- `vest`
+- `vestother`
+- `vestedtransfer`
