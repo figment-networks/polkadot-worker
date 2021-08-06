@@ -46,6 +46,44 @@ where`polkadot_proxy_addr` is a http address to a running instance of [polkadot 
 
 After running binary worker should successfully register itself to the manager.
 
+## Developing Locally
+
+First, you will need to set up a few dependencies:
+
+1. [Install Go](https://golang.org/doc/install)
+2. A Polkadot network node, and a [polkadot proxy](https://github.com/figment-networks/polkadothub-proxy) (in this example, we assume they're both running at http://127.0.0.1)
+3. A running [manager](https://github.com/figment-networks/indexer-manager) instance
+4. A running datastore API instance (e.g. [search](https://github.com/figment-networks/indexer-search) - this is configured with `STORE_HTTP_ENDPOINTS`)
+
+Then, run the worker with some environment config:
+
+> Note: if you are running multiple workers, you may need to specify a different port (e.g. `PORT=3001`) to avoid collisions
+
+```
+CHAIN_ID=mainnet \
+STORE_HTTP_ENDPOINTS=http://127.0.0.1:8986/input/jsonrpc \
+POLKADOT_PROXY_ADDR=127.0.0.1:50051 \
+POLKADOT_NODE_ADDRS=127.0.0.1:9944 \
+go run ./cmd/polkadot-worker
+```
+
+Upon success, you should see logs that look like this:
+
+```log
+{"level":"info","time":"2021-08-06T14:29:25.030-0400","msg":"polkadot-worker  (git: ) - built at "}
+{"level":"info","time":"2021-08-06T14:29:25.031-0400","msg":"Self-hostname (ca00f9c1-aeca-43c9-bd86-c391629adffc) is 0.0.0.0:3000 "}
+{"level":"info","time":"2021-08-06T14:29:25.031-0400","msg":"Connecting to managers (127.0.0.1:8085)"}
+{"level":"info","time":"2021-08-06T14:29:25.031-0400","msg":"[API] Connecting to websocket ","host":"127.0.0.1:9944"}
+{"level":"info","time":"2021-08-06T14:29:25.042-0400","msg":"[HTTP] Listening on","address":"0.0.0.0","port":"8087"}
+{"level":"info","time":"2021-08-06T14:29:25.043-0400","msg":"[GRPC] Listening on","address":"0.0.0.0","port":"3000"}
+```
+
+Once the worker connects to a running [manager](https://github.com/figment-networks/indexer-manager), which runs by default at `127.0.0.1:8085`, you should see a stream registered in the logs:
+
+```log
+{"level":"debug","time":"2021-08-06T14:29:35.039-0400","msg":"Register indexer-manager client stream","streamID":"c8469fc9-663c-4efd-b2e6-599de8c4790b"}
+{"level":"debug","time":"2021-08-06T14:29:35.039-0400","msg":"[GRPC] Send started "}
+```
 ## Event Types
 List of currently supporter event types in polkadot-worker are (listed by modules):
 
