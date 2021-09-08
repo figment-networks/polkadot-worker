@@ -1,5 +1,6 @@
 # POLKADOT WORKER
 
+> :warning:  This uses the new version of manager, if you're looking for the old one you can find it on `legacy-manager` branch. Tags compatible with latest manager follow the format `v0.1.x`, tags compatible with legacy manager follow the format `v0.0.x`
 This repository contains a worker part dedicated for polkadot transactions.
 
 ## Worker
