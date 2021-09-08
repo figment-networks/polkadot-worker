@@ -127,7 +127,7 @@ func (e *event) parseEventDescription(log *zap.Logger, ev *eventpb.Event, height
 		case "account", "approving", "authority_id", "multisig", "stash", "unvested", "target",
 			"sub", "main", "cancelling", "lost", "rescuer", "sender", "voter", "founder", "candidate",
 			"candidate_id", "vouching", "nominator", "validator", "finder", "real", "primary",
-			"restorer", "dest", "deployer", "contract", "creator", "owner", "origin":
+			"restorer", "dest", "deployer", "contract", "creator", "owner", "origin", "validator_stash":
 			if accountID, err := getAccountID(eventData); err == nil {
 				if strings.ToLower(ev.Method) == "endowed" {
 					e.recipientAccountID = accountID
