@@ -175,6 +175,8 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 				c.GetTransactions(ctxWithTimeout, taskRequest, stream)
 			case rStructs.ReqIDGetLatestMark:
 				c.GetLatestMark(ctxWithTimeout, taskRequest, stream)
+			case rStructs.ReqIDLatestData:
+				c.GetLatestData(ctxWithTimeout, taskRequest, stream)
 			default:
 				stream.Send(cStructs.TaskResponse{
 					Id: taskRequest.Id,
@@ -398,4 +400,42 @@ func (c *Client) BlockAndTx(ctx context.Context, height uint64) (blockWM structs
 	}
 
 	return blockWM, txsWM, nil
+}
+
+// GetLatestData returns latest data
+func (c *Client) GetLatestData(ctx context.Context, tr cStructs.TaskRequest, stream *cStructs.StreamAccess) {
+	timer := metrics.NewTimer(getAccountBalanceDuration)
+	defer timer.ObserveDuration()
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	resp, err := c.proxy.GetBlockByHeight(ctx, 0)
+	if err != nil {
+		stream.Send(cStructs.TaskResponse{
+			Id: tr.Id,
+			Error: cStructs.TaskError{
+				Msg: fmt.Sprintf("Could not send head info: %s", err.Error()),
+			},
+			Final: true,
+		})
+		return
+	}
+
+	b := structs.Block{
+		Hash:   resp.Block.BlockHash,
+		Height: uint64(resp.Block.Header.Height),
+		Time:   resp.Block.Header.Time.AsTime(),
+	}
+
+	tResp := cStructs.TaskResponse{Id: tr.Id, Type: "Block", Final: true}
+	tResp.Payload, err = json.Marshal(b)
+
+	if err != nil {
+		c.log.Error("[POLKADOT-CLIENT] Error encoding payload data", zap.Error(err))
+	}
+
+	if err := stream.Send(tResp); err != nil {
+		c.log.Error("[POLKADOT-CLIENT] Error sending end", zap.Error(err))
+	}
 }
