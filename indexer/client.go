@@ -410,7 +410,7 @@ func (c *Client) GetLatestData(ctx context.Context, tr cStructs.TaskRequest, str
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	resp, err := c.proxy.GetBlockByHeight(ctx, 0)
+	blockWM, _, err := c.blockAndTx(ctx, 0)
 	if err != nil {
 		stream.Send(cStructs.TaskResponse{
 			Id: tr.Id,
@@ -423,9 +423,9 @@ func (c *Client) GetLatestData(ctx context.Context, tr cStructs.TaskRequest, str
 	}
 
 	b := structs.Block{
-		Hash:   resp.Block.BlockHash,
-		Height: uint64(resp.Block.Header.Height),
-		Time:   resp.Block.Header.Time.AsTime(),
+		Hash:   blockWM.Block.Hash,
+		Height: blockWM.Block.Height,
+		Time:   blockWM.Block.Time,
 	}
 
 	tResp := cStructs.TaskResponse{Id: tr.Id, Type: "Block", Final: true}
