@@ -651,22 +651,20 @@ func (c *Client) GetChainHeadBlock(ctx context.Context, tr cStructs.TaskRequest,
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	blockWM, _, err := c.blockAndTx(ctx, c.log, 0)
+	ch := c.gbPool.Get()
+	defer c.gbPool.Put(ch)
+	height, err := getLatestHeight(c.serverConn, c.Cache, ch)
 	if err != nil {
 		stream.Send(cStructs.TaskResponse{
-			Id: tr.Id,
-			Error: cStructs.TaskError{
-				Msg: fmt.Sprintf("Could not send head info: %s", err.Error()),
-			},
+			Id:    tr.Id,
+			Error: cStructs.TaskError{Msg: fmt.Sprintf("Could not fetch head from proxy: %s", err.Error())},
 			Final: true,
 		})
 		return
 	}
 
 	b := structs.Block{
-		Hash:   blockWM.Hash,
-		Height: blockWM.Height,
-		Time:   blockWM.Time,
+		Height: height,
 	}
 
 	tResp := cStructs.TaskResponse{Id: tr.Id, Type: "ChainHeadBlock", Final: true}
