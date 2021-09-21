@@ -54,6 +54,7 @@ var (
 	getAccountBalanceDuration *metrics.GroupObserver
 	getTransactionDuration    *metrics.GroupObserver
 	getLatestDuration         *metrics.GroupObserver
+	getChainHeadBlockDuration *metrics.GroupObserver
 )
 
 type ClientCache struct {
@@ -89,6 +90,7 @@ func NewClient(log *zap.Logger, proxy ClientIface, exp int, maxHeightsToGet uint
 	getAccountBalanceDuration = endpointDuration.WithLabels("getAccountBalance")
 	getTransactionDuration = endpointDuration.WithLabels("getTransactions")
 	getLatestDuration = endpointDuration.WithLabels("getLatest")
+	getChainHeadBlockDuration = endpointDuration.WithLabels("getChainHead")
 	newLru, err := lru.New(3000)
 	if err != nil {
 		panic(fmt.Errorf("cache cannot be defined: %w", err)) // we really need to fatal here. this should not happen.
@@ -162,6 +164,8 @@ func (c *Client) Run(ctx context.Context, stream *cStructs.StreamAccess) {
 				c.GetTransactions(ctxWithTimeout, taskRequest, stream)
 			case structs.ReqIDLatestData:
 				c.GetLatest(ctxWithTimeout, taskRequest, stream)
+			case structs.ReqIDChainHeadBlock:
+				c.GetChainHeadBlock(ctxWithTimeout, taskRequest, stream)
 			default:
 				stream.Send(cStructs.TaskResponse{
 					Id: taskRequest.Id,
@@ -637,4 +641,42 @@ func (c *Client) wrapErrorsFromChan(errChan chan error) error {
 	}
 
 	return nil
+}
+
+// GetChainHeadBlock returns chain's head block
+func (c *Client) GetChainHeadBlock(ctx context.Context, tr cStructs.TaskRequest, stream *cStructs.StreamAccess) {
+	timer := metrics.NewTimer(getChainHeadBlockDuration)
+	defer timer.ObserveDuration()
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	blockWM, _, err := c.blockAndTx(ctx, c.log, 0)
+	if err != nil {
+		stream.Send(cStructs.TaskResponse{
+			Id: tr.Id,
+			Error: cStructs.TaskError{
+				Msg: fmt.Sprintf("Could not send head info: %s", err.Error()),
+			},
+			Final: true,
+		})
+		return
+	}
+
+	b := structs.Block{
+		Hash:   blockWM.Hash,
+		Height: blockWM.Height,
+		Time:   blockWM.Time,
+	}
+
+	tResp := cStructs.TaskResponse{Id: tr.Id, Type: "ChainHeadBlock", Final: true}
+	tResp.Payload, err = json.Marshal(b)
+
+	if err != nil {
+		c.log.Error("[POLKADOT-CLIENT] Error encoding payload data", zap.Error(err))
+	}
+
+	if err := stream.Send(tResp); err != nil {
+		c.log.Error("[POLKADOT-CLIENT] Error sending end", zap.Error(err))
+	}
 }
