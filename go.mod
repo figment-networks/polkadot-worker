@@ -6,7 +6,7 @@ require (
 	github.com/OneOfOne/xxhash v1.2.8
 	github.com/bearcherian/rollzap v1.0.2
 	github.com/btcsuite/btcutil v1.0.2
-	github.com/figment-networks/indexer-manager v0.3.7
+	github.com/figment-networks/indexer-manager v0.3.11
 	github.com/figment-networks/indexing-engine v0.3.1
 	github.com/figment-networks/polkadothub-proxy/grpc v0.0.0-20210708193720-bc93a36552c9
 	github.com/google/uuid v1.2.0
